@@ -87,48 +87,16 @@ function renderOverview() {
   const waist = waistNow();
   const bl = baselineInfo();
   const pct = progressPct();
-  const gap = w && Number.isFinite(ARCHIVE.weight.target)
-    ? (w.kg - ARCHIVE.weight.target).toFixed(1)
-    : null;
+  const gap = (w.kg - ARCHIVE.weight.target).toFixed(1);
   const comp = completeness();
   const tasks = openTodos().slice(0, 3);
   const events = ARCHIVE.timeline.slice(0, 3);
-  const themes = ARCHIVE.issues.slice(0, 6);
+  const themes = ['weight', 'ankle', 'eyes', 'septum', 'liver', 'hair']
+    .map(id => ARCHIVE.issues.find(i => i.id === id)).filter(Boolean);
 
-  const heroNote = gap === null
-    ? '尚未设置体重起点或长期目标。'
-    : bl.ok
-      ? `晨重基线 ${kg1(bl.kg)} kg（最近 7 个晨重日均值）　·　距目标 ${gap} kg`
-      : `距目标 ${gap} kg　·　${bl.days ? `已有 ${bl.days} 天晨重，还需 ${bl.need} 天建立基线` : '尚未开始晨重记录，基线待建立'}`;
-
-  const heroHTML = w
-    ? `
-    <section class="hero">
-      <div class="hero-left">
-        <p class="hero-label">身体基线　BASELINE</p>
-        <div class="hero-num"><b>${kg1(w.kg)}</b><span>kg</span></div>
-        <p class="hero-sub">${esc(w.date)} ${w.tag === 'morning' ? '晨重' : '自报体重'}${bl.ok ? '' : '，尚未建立晨重基线'}</p>
-      </div>
-      <div class="hero-div"></div>
-      <div class="hero-stats">
-        <div class="stat"><small>BMI</small><b>${bmi === null ? '待填' : bmi.toFixed(1)}</b><i>${bmi === null ? '需身高与体重' : bmi >= 24 ? '偏高' : '正常范围'}</i></div>
-        <div class="stat"><small>身高</small><b>${Number.isFinite(ARCHIVE.profile.height) ? ARCHIVE.profile.height : '待填'}</b><i>cm</i></div>
-        <div class="stat"><small>长期目标</small><b>${Number.isFinite(ARCHIVE.weight.target) ? ARCHIVE.weight.target.toFixed(1) : '待设'}</b><i>kg</i></div>
-        <div class="stat"><small>腰围</small><b style="font-size:${waist ? '22px' : '19px'}">${waist ? num(waist) : '待测'}</b><i>${waist ? 'cm' : '建议本周补录'}</i></div>
-      </div>
-      <div class="hero-progress">
-        <div class="hp-row"><span>减重进度</span><b>${pct === null ? '待设置' : Math.round(pct) + ' %'}</b></div>
-        <div class="track"><i style="width:${pct === null ? 2 : Math.max(pct, 2)}%"></i></div>
-        <div class="hp-scale"><span>${Number.isFinite(ARCHIVE.weight.start) ? ARCHIVE.weight.start.toFixed(1) + ' kg 起点' : '起点待记录'}</span><span>${Number.isFinite(ARCHIVE.weight.target) ? ARCHIVE.weight.target.toFixed(1) + ' kg' : '目标待设置'}</span></div>
-        <p class="hp-note">${heroNote}</p>
-      </div>
-    </section>`
-    : emptyGuide({
-      icon: 'pulse', title: '档案还是空的', solid: true,
-      desc: '从一条真实记录开始：体重、检验结果、就诊或用药都可以。空档案不会显示示例数据。',
-      actions: `<button class="btn btn-primary" data-act="record">${I.plus}记录一次</button><button class="btn btn-ghost" data-act="newlab">录入检验结果</button><button class="btn btn-ghost" data-act="visit-add">登记就诊</button>`,
-      steps: []
-    });
+  const heroNote = bl.ok
+    ? `晨重基线 ${kg1(bl.kg)} kg（最近 7 个晨重日均值）　·　距目标 ${gap} kg`
+    : `距目标 ${gap} kg　·　${bl.days ? `已有 ${bl.days} 天晨重，还需 ${bl.need} 天建立基线` : '尚未开始晨重记录，基线待建立'}`;
 
   $('#view').innerHTML = `
   <div class="stack">
@@ -138,7 +106,26 @@ function renderOverview() {
       <button class="band-link" data-act="go" data-to="profile">查看过敏档案 →</button>
     </div></section>` : ''}
     ${reminderBandHTML()}
-    ${heroHTML}
+    <section class="hero">
+      <div class="hero-left">
+        <p class="hero-label">身体基线　BASELINE</p>
+        <div class="hero-num"><b>${kg1(w.kg)}</b><span>kg</span></div>
+        <p class="hero-sub">${esc(w.date)} ${w.tag === 'morning' ? '晨重' : '自报体重'}${bl.ok ? '' : '，尚未建立晨重基线'}</p>
+      </div>
+      <div class="hero-div"></div>
+      <div class="hero-stats">
+        <div class="stat"><small>BMI</small><b>${bmi.toFixed(1)}</b><i class="${bmi >= 24 ? 'warn' : ''}">${bmi >= 24 ? '偏高' : '正常范围'}</i></div>
+        <div class="stat"><small>身高</small><b>${ARCHIVE.profile.height}</b><i>cm</i></div>
+        <div class="stat"><small>长期目标</small><b>${ARCHIVE.weight.target.toFixed(1)}</b><i>kg</i></div>
+        <div class="stat"><small>腰围</small><b style="font-size:${waist ? '22px' : '19px'}">${waist ? num(waist) : '待测'}</b><i>${waist ? 'cm' : '建议本周补录'}</i></div>
+      </div>
+      <div class="hero-progress">
+        <div class="hp-row"><span>减重进度</span><b>${Math.round(pct)} %</b></div>
+        <div class="track"><i style="width:${Math.max(pct, 2)}%"></i></div>
+        <div class="hp-scale"><span>${ARCHIVE.weight.start.toFixed(1)} kg 起点</span><span>${ARCHIVE.weight.target.toFixed(1)} kg</span></div>
+        <p class="hp-note">${heroNote}</p>
+      </div>
+    </section>
 
     <div class="grid-2">
       <section class="card">
@@ -150,17 +137,17 @@ function renderOverview() {
               <p class="task-text">${esc(t.text)}</p>
               <p class="task-meta ${t.flag ? 'flag' : ''}">${esc(t.meta)}</p>
             </div>
-          </div>`).join('') : '<div class="empty">暂无待办。新增问题或复查后记得补充记录。</div>'}
+          </div>`).join('') : '<div class="empty">所有待办已勾选。新增问题或复查后记得补充记录。</div>'}
         <div style="margin-top:14px"><button class="btn-plain" data-act="go" data-to="todo">查看全部 ${allTodos().length} 项 →</button></div>
       </section>
 
       <section class="card">
         <div class="card-head"><h2>最近记录</h2><button class="link" data-act="go" data-to="timeline">查看时间线</button></div>
-        ${events.length ? events.map(e => `
+        ${events.map(e => `
           <div class="event">
             <div class="event-date">${esc(e.date.slice(5))}<span>${esc(e.date.slice(0, 4))}</span></div>
             <div><p class="event-title">${esc(e.type)}</p><p class="event-meta">${esc(e.text)}</p></div>
-          </div>`).join('') : '<div class="empty">暂无记录。录入检验、就诊或症状后会出现在时间线。</div>'}
+          </div>`).join('')}
       </section>
     </div>
 
@@ -225,7 +212,7 @@ function renderIssues() {
             <span class="mt">${esc(i.lastDate === '未记录' ? '未记录' : i.lastDate.slice(5))} · ${esc(i.lastLabel)}</span>
           </button>`).join('') || '<div class="empty" style="margin:10px">该筛选下暂无主题</div>'}
       </div>
-      ${cur ? issueDetail(cur) : '<div class="card empty">还没有健康主题。就诊、检查或长期关注的问题，可以在结构化就诊记录中先登记。</div>'}
+      ${cur ? issueDetail(cur) : '<div class="card empty">请选择一个主题</div>'}
     </div>`;
 }
 
@@ -528,9 +515,13 @@ function renderLabs() {
   const box = $('#chartBox');
   if (box) {
     if (ui.demo) {
-      paintChart(box, DEMO_POINTS, { low: 57, high: 97, unit: 'μmol/L' });
+      echartsChart(box, {
+        series: [{ name: (cur && cur.name) || '示例', points: DEMO_POINTS }],
+        low: 57, high: 97, unit: 'μmol/L'
+      });
     } else if (pts.length) {
-      paintChart(box, pts.map(p => ({ date: p.date, value: p.value })), {
+      echartsChart(box, {
+        series: [{ name: (cur && cur.name) || '指标', points: pts.map(p => ({ date: p.date, value: p.value })) }],
         low: cur.low, high: cur.high, unit: cur.unit
       });
     }
@@ -596,7 +587,7 @@ function renderLabAll() {
           </select></label>
         </div>
         <div class="laball-sum" id="labAllSum"></div>
-        <div class="table-wrap" id="labAllBox"></div>
+        <div class="detail-fold-host" id="labAllFoldHost"></div>
         <p class="hint" style="margin-top:10px">「提示」列只与这条记录自己填的参考范围比较，未填范围时显示 —，不代表正常。报告拍照件的查看与编辑在<button class="link-btn" data-act="go" data-to="labs">检验指标页</button>下方。删除不可撤销，改之前建议先导出备份。</p>
       </section>
     </div>`;
@@ -609,8 +600,8 @@ function renderLabAll() {
 }
 
 function paintLabAll() {
-  const box = $('#labAllBox'), sum = $('#labAllSum');
-  if (!box) return;
+  const host = $('#labAllFoldHost'), sum = $('#labAllSum');
+  if (!host) return;
   const rows = labAllRows();
   const bad = rows.filter(isAbnormal).length;
   const unknown = rows.filter(r => !r.qualitative && r.low === null && r.high === null).length;
@@ -626,7 +617,7 @@ function paintLabAll() {
   }
 
   if (!labs.length) {
-    box.innerHTML = emptyGuide({
+    host.innerHTML = emptyGuide({
       icon: 'pulse', title: '还没有检验记录',
       desc: '可以粘贴报告文字一次识别多项，也可以逐条录入；全部结果都会汇总在这里，逐条可改。',
       actions: `<button class="btn btn-primary" data-act="newlab">${I.plus}录入结果</button><button class="btn btn-ghost" data-act="import">${I.upload}粘贴报告文字导入</button>`
@@ -634,7 +625,7 @@ function paintLabAll() {
     return;
   }
   if (!rows.length) {
-    box.innerHTML = emptyGuide({
+    host.innerHTML = emptyGuide({
       icon: 'search', title: '没有符合筛选条件的记录',
       desc: '清空关键词，或把类别 / 来源改回「全部」。',
       actions: `<button class="btn btn-ghost" data-act="go" data-to="labs">回到趋势图</button>`
@@ -650,6 +641,11 @@ function paintLabAll() {
     else groups.push({ date: r.date, rows: [r] });
   });
 
+  /* 分页是在「记录条数」维度上做的，映射回当前页覆盖到的日期分组 */
+  const pgLabs = paginate(rows, 'labs');
+  const pageIds = new Set(pgLabs.rows.map(r => r.id));
+  const pageGroups = groups.map(g => ({ date: g.date, rows: g.rows.filter(r => pageIds.has(r.id)) })).filter(g => g.rows.length);
+
   const rowHTML = r => {
     const rep = r.reportId ? reportById(r.reportId) : null;
     return `<tr>
@@ -664,14 +660,14 @@ function paintLabAll() {
         </tr>`;
   };
 
-  box.innerHTML = `
+  const tableHTML = `
     <table class="data laball-table">
       <thead><tr>
         <th>项目</th><th style="text-align:right">结果</th>
         <th class="col-ref" style="text-align:right">参考</th><th>提示</th><th class="col-rep">报告</th><th></th>
       </tr></thead>
       <tbody>
-        ${groups.map(g => {
+        ${pageGroups.map(g => {
     const gReps = [...new Set(g.rows.map(r => r.reportId).filter(Boolean))].map(reportById).filter(Boolean);
     const hosp = [...new Set(gReps.map(x => x.hospital).filter(Boolean))].join(' / ');
     const gBad = g.rows.filter(isAbnormal).length;
@@ -680,130 +676,23 @@ function paintLabAll() {
           </td></tr>` + g.rows.map(rowHTML).join('');
   }).join('')}
       </tbody>
-    </table>`;
+    </table>
+    ${pagerHTML('labs', pgLabs)}`;
+
+  host.innerHTML = detailFold('labs', '记录明细', rows.length, `<div class="table-wrap">${tableHTML}</div>`);
 }
 
 function paintChart(host, pts, o = {}) {
-  const W = Math.max(host.clientWidth || 720, 320);
-  const H = o.height || (window.innerWidth < 700 ? 236 : 300);
-  const L = 44, R = 12, T = 26, B = 44;
-  const iw = Math.max(W - L - R, 60);
-  const ih = H - T - B;
-
-  const vals = pts.map(p => p.value).concat(o.target != null ? [o.target] : []);
-  let lo = Math.min(...vals, ...(o.low != null ? [o.low] : []));
-  let hi = Math.max(...vals, ...(o.high != null ? [o.high] : []));
-  if (lo === hi) { lo -= 1; hi += 1; }
-  const padv = (hi - lo) * 0.18;
-  lo -= padv; hi += padv;
-
-  const ts = pts.map(p => Date.parse(p.date + 'T00:00:00Z'));
-  const tmin = Math.min(...ts), tmax = Math.max(...ts);
-  const X = i => pts.length === 1 ? L + iw / 2 : L + iw * (ts[i] - tmin) / (tmax - tmin);
-  const Y = v => T + ih * (1 - (v - lo) / (hi - lo));
-
-  const svg = svgEl('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '检验指标趋势图' });
-
-  // 参考区间
-  if (o.low != null && o.high != null) {
-    svg.append(svgEl('rect', {
-      x: L, y: Y(o.high), width: iw, height: Math.max(Y(o.low) - Y(o.high), 1),
-      fill: '#EDF3EC'
-    }));
-    [o.high, o.low].forEach(v => {
-      svg.append(svgEl('line', {
-        x1: L, y1: Y(v), x2: L + iw, y2: Y(v),
-        stroke: '#B9CDBD', 'stroke-width': 1, 'stroke-dasharray': '4 4'
-      }));
-    });
-  }
-
-  // 目标线
-  if (o.target != null) {
-    svg.append(svgEl('line', {
-      x1: L, y1: Y(o.target), x2: L + iw, y2: Y(o.target),
-      stroke: '#A9752F', 'stroke-width': 1, 'stroke-dasharray': '5 4', opacity: .75
-    }));
-    const tl = svgEl('text', {
-      x: L + iw, y: Y(o.target) - 6, 'text-anchor': 'end', fill: '#A9752F',
-      'font-size': 9.5, 'font-family': 'Inter, Segoe UI, sans-serif'
-    });
-    tl.textContent = `目标 ${Number(o.target).toFixed(1)}`;
-    svg.append(tl);
-  }
-
-  // 网格
-  for (let i = 0; i <= 3; i++) {
-    const y = T + ih * i / 3;
-    svg.append(svgEl('line', { x1: L, y1: y, x2: L + iw, y2: y, stroke: i === 3 ? '#E2DDD0' : '#F0EBE0', 'stroke-width': 1 }));
-  }
-
-  // 折线
-  if (pts.length > 1) {
-    svg.append(svgEl('polyline', {
-      points: pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.value).toFixed(1)}`).join(' '),
-      fill: 'none', stroke: '#2F6B57', 'stroke-width': 2.4,
-      'stroke-linecap': 'round', 'stroke-linejoin': 'round'
-    }));
-  }
-
-  // 点
-  pts.forEach((p, i) => {
-    const last = i === pts.length - 1;
-    const c = svgEl('circle', {
-      cx: X(i), cy: Y(p.value), r: last ? 6.5 : 5,
-      fill: last ? '#2F6B57' : '#FFFFFF', stroke: '#2F6B57', 'stroke-width': 2.4
-    });
-    const t = document.createElementNS(NS, 'title');
-    t.textContent = `${p.date}：${p.value}${o.unit ? ' ' + o.unit : ''}`;
-    c.append(t);
-    svg.append(c);
-
-    // 越界点与最新点直接标数值：单次记录时图很空，靠悬停看不出是多少
-    const over = (o.low != null && p.value < o.low) || (o.high != null && p.value > o.high);
-    if (last || over) {
-      const lbl = svgEl('text', {
-        x: X(i), y: Math.max(Y(p.value) - 12, T + 10), 'text-anchor': 'middle',
-        fill: over ? '#B4553F' : '#173F33', 'font-size': 11.5, 'font-weight': 600,
-        'font-family': 'Inter, Segoe UI, sans-serif'
-      });
-      lbl.textContent = String(p.value);
-      svg.append(lbl);
-    }
+  // task 020：图表已统一改用 ECharts（见 js/app.chart.js 的 echartsChart）。
+  // 保留此薄封装以防他处仍以旧签名调用，内部转发到 echartsChart。
+  echartsChart(host, {
+    series: [{ name: (o.name) || '指标', points: pts }],
+    unit: o.unit,
+    low: o.low,
+    high: o.high,
+    target: o.target,
+    height: o.height
   });
-
-  // y 轴标签
-  const yLabels = [];
-  if (o.high != null) yLabels.push({ v: o.high, text: String(o.high) });
-  if (o.low != null) yLabels.push({ v: o.low, text: String(o.low) });
-  if (o.low != null || o.high != null) yLabels.push({ v: lo, text: String(Math.round(lo)) });
-  if (o.low == null && o.high == null) {
-    yLabels.length = 0;
-    for (let i = 0; i <= 3; i++) yLabels.push({ v: hi - (hi - lo) * i / 3, text: (hi - (hi - lo) * i / 3).toFixed(1) });
-  }
-  yLabels.filter(l => l.text).forEach(l => {
-    const t = svgEl('text', {
-      x: L - 10, y: Y(l.v) + 3.5, 'text-anchor': 'end',
-      fill: '#A5AA9F', 'font-size': 10, 'font-family': 'Inter, Segoe UI, sans-serif'
-    });
-    t.textContent = l.text;
-    svg.append(t);
-  });
-
-  // x 轴标签
-  const step = Math.max(1, Math.ceil(pts.length / 5));
-  pts.forEach((p, i) => {
-    if (i % step !== 0 && i !== pts.length - 1) return;
-    const t = svgEl('text', {
-      x: Math.min(Math.max(X(i), L + 24), L + iw - 24), y: H - 16,
-      'text-anchor': i === 0 ? 'start' : (i === pts.length - 1 ? 'end' : 'middle'),
-      fill: '#8C9188', 'font-size': 10.5, 'font-family': 'Inter, Segoe UI, sans-serif'
-    });
-    t.textContent = p.date;
-    svg.append(t);
-  });
-
-  host.replaceChildren(svg);
 }
 
 /* ======================= 渲染：时间线 ======================= */
@@ -926,7 +815,7 @@ function renderMeds() {
 /* ======================= 渲染：待办 ======================= */
 function renderTodos() {
   const total = allTodos().length, open = openTodos().length;
-  const pct = total ? Math.round((total - open) / total * 100) : 0;
+  const pct = Math.round((total - open) / total * 100);
   setHead('FOLLOW-UP　复诊与待办', '复诊待办',
     '未勾选均为未确认完成，不代表已预约',
     `<button class="btn btn-primary" data-act="todo-add">${I.plus}添加待办</button>`);

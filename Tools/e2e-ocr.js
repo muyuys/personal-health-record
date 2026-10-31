@@ -1,14 +1,9 @@
 /* 图片识别链路 e2e：file:// 页面 → 本机 127.0.0.1:8765 → 文字 → 解析预览
    前提：先启动 server/启动识别服务.bat（或 .venv\Scripts\python.exe server/ocr_server.py）
-   运行：npm install 后 node Tools/e2e-ocr.js（或把 playwright 所在 node_modules 配进 NODE_PATH） */
+   运行：NODE_PATH=C:/Users/muyuys/.workbuddy/binaries/node/workspace/node_modules node Tools/e2e-ocr.js */
 const { chromium } = require('playwright');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const ROOT = path.join(__dirname, '..');
-const OUT = path.join(os.tmpdir(), 'health-e2e-ocr') + path.sep;
-// 隐私原则：e2e 不读个人报告原件，测试图在临时目录合成。
-const IMG = path.join(OUT, 'sample-report.png');
+const OUT = 'C:/Users/muyuys/AppData/Local/Temp/';
+const IMG = 'F:/Health/data/报告原件/2026-09-04-同仁医院-肝肾常规.jpg';
 
 let pass = 0, fail = 0;
 const check = (c, label, extra) => {
@@ -17,18 +12,13 @@ const check = (c, label, extra) => {
 };
 
 (async () => {
-  fs.mkdirSync(path.dirname(IMG), { recursive: true });
-  fs.writeFileSync(IMG, Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-    'base64'));
   const browser = await chromium.launch({ channel: 'chrome' });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
 
-  const PAGE_URL = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') + '?offline=1#/labs';
-  await page.goto(PAGE_URL);
+  await page.goto('file:///F:/Health/index.html?offline=1#/labs');
   await page.waitForTimeout(400);
   await page.evaluate(() => localStorage.clear());
   await page.reload();

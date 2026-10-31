@@ -1,12 +1,12 @@
 import sys, json
 from pathlib import Path
-# 2026-10-30 目录迁移：脚本在 Tools/影像分析/，影像在 data/影像/
+# 2026-10-30 目录迁移：脚本在 Tools/影像分析/，影像在 data/右脚踝/
 sys.path.insert(0, str(Path(__file__).parent / 'runtime'))
 import pydicom
 import numpy as np
 from PIL import Image, ImageDraw
 
-ROOT = Path(__file__).resolve().parents[2] / 'data' / '影像'
+ROOT = Path(__file__).resolve().parents[2] / 'data' / '右脚踝'
 OUT = ROOT / 'ct_analysis'
 OUT.mkdir(exist_ok=True)
 series = {}

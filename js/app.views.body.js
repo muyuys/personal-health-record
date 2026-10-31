@@ -9,101 +9,16 @@ function bodySeries(k) {
 /* 三线共用一条 y 轴：三围数值本来就在同一量级，分轴反而不好比 */
 function paintBodyChart(host, recs) {
   if (!host) return;
-  host.innerHTML = '';
-  const W = Math.max(host.clientWidth || 720, 320);
-  const H = window.innerWidth < 700 ? 230 : 270;
-  const L = 40, R = 16, T = 20, B = 36;
-  const iw = Math.max(W - L - R, 60);
-  const ih = H - T - B;
-
   const series = BODY_FIELDS.map(f => ({
-    label: f.label, color: BODY_COLORS[f.k],
-    pts: recs.filter(r => Number.isFinite(r[f.k])).map(r => ({ date: r.date, value: r[f.k] }))
-  })).filter(s => s.pts.length);
-  if (!series.length) return;
-
-  const vals = series.flatMap(s => s.pts.map(p => p.value));
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1.5; hi = m + 1.5; }
-  const pad = (hi - lo) * 0.22;
-  lo -= pad; hi += pad;
-
-  const days = [...new Set(recs.map(r => r.date))].sort();
-  const dx = d => Date.parse(d + 'T00:00:00Z');
-  const tmin = dx(days[0]), tmax = dx(days.at(-1));
-  const X = d => (days.length === 1 || tmax === tmin) ? L + iw / 2 : L + iw * (dx(d) - tmin) / (tmax - tmin);
-  const Y = v => T + ih * (1 - (v - lo) / (hi - lo));
-
-  const svg = svgEl('svg', {
-    width: W, height: H, viewBox: `0 0 ${W} ${H}`,
-    role: 'img', 'aria-label': '身体围度趋势图'
+    name: f.label, color: BODY_COLORS[f.k],
+    points: recs.filter(r => Number.isFinite(r[f.k])).map(r => ({ date: r.date, value: r[f.k] }))
+  })).filter(s => s.points.length);
+  if (!series.length) { host.innerHTML = ''; return; }
+  echartsChart(host, {
+    series,
+    unit: 'cm',
+    height: window.innerWidth < 700 ? 230 : 270
   });
-
-  for (let i = 0; i <= 3; i++) {
-    const v = hi - (hi - lo) * i / 3;
-    const y = Y(v);
-    svg.append(svgEl('line', {
-      x1: L, y1: y, x2: L + iw, y2: y,
-      stroke: i === 3 ? '#E2DDD0' : '#F0EBE0', 'stroke-width': 1
-    }));
-    const t = svgEl('text', {
-      x: L - 9, y: y + 3.5, 'text-anchor': 'end', fill: '#A5AA9F',
-      'font-size': 10, 'font-family': 'Inter, Segoe UI, sans-serif'
-    });
-    t.textContent = v.toFixed(0);
-    svg.append(t);
-  }
-
-  if (days.length < 8) {
-    days.forEach(d => svg.append(svgEl('line', {
-      x1: X(d), y1: T, x2: X(d), y2: T + ih, stroke: '#F5F1E8', 'stroke-width': 1
-    })));
-  }
-
-  series.forEach(s => {
-    if (s.pts.length > 1) {
-      svg.append(svgEl('polyline', {
-        points: s.pts.map(p => `${X(p.date).toFixed(1)},${Y(p.value).toFixed(1)}`).join(' '),
-        fill: 'none', stroke: s.color, 'stroke-width': 2.2,
-        'stroke-linecap': 'round', 'stroke-linejoin': 'round'
-      }));
-    }
-    s.pts.forEach((p, i) => {
-      const last = i === s.pts.length - 1;
-      const c = svgEl('circle', {
-        cx: X(p.date), cy: Y(p.value), r: last ? 5.5 : 4,
-        fill: last ? s.color : '#FFFFFF', stroke: s.color, 'stroke-width': 2.2
-      });
-      const tip = document.createElementNS(NS, 'title');
-      tip.textContent = `${p.date}　${s.label} ${p.value} cm`;
-      c.append(tip);
-      svg.append(c);
-      if (last) {
-        const lbl = svgEl('text', {
-          x: Math.min(Math.max(X(p.date), L + 12), L + iw - 12),
-          y: Math.max(Y(p.value) - 10, T + 9), 'text-anchor': 'middle',
-          fill: s.color, 'font-size': 10.5, 'font-weight': 600,
-          'font-family': 'Inter, Segoe UI, sans-serif'
-        });
-        lbl.textContent = String(p.value);
-        svg.append(lbl);
-      }
-    });
-  });
-
-  const step = Math.max(1, Math.ceil(days.length / 5));
-  days.forEach((d, i) => {
-    if (i % step !== 0 && i !== days.length - 1) return;
-    const t = svgEl('text', {
-      x: Math.min(Math.max(X(d), L + 22), L + iw - 22), y: H - 13,
-      'text-anchor': i === 0 ? 'start' : (i === days.length - 1 ? 'end' : 'middle'),
-      fill: '#A5AA9F', 'font-size': 10, 'font-family': 'Inter, Segoe UI, sans-serif'
-    });
-    t.textContent = d.slice(5);
-    svg.append(t);
-  });
-
-  host.append(svg);
 }
 
 function bodyCardHTML() {
@@ -234,7 +149,11 @@ function paintCompChart() {
   if (!m) return;
   const pts = weightMetricSeries(m.k);
   if (!pts.length) { host.innerHTML = ''; return; }
-  paintChart(host, pts, { height: window.innerWidth < 700 ? 210 : 240, unit: m.unit || undefined });
+  echartsChart(host, {
+    series: [{ name: m.label, points: pts }],
+    unit: m.unit || undefined,
+    height: window.innerWidth < 700 ? 210 : 240
+  });
 }
 
 function renderWeight() {
@@ -242,23 +161,13 @@ function renderWeight() {
   const cur = latestWeight();
   const bl = baselineInfo();
   const pct = progressPct();
+  const change = cur.kg - ARCHIVE.weight.start;
   const since7 = list.filter(w => (Date.now() - Date.parse(w.date + 'T00:00:00')) <= 7 * 864e5);
+  const pg = paginate(list.slice().reverse(), 'weight');
 
   setHead('WEIGHT LOG　减重记录', '减重记录',
     '同条件晨重建立基线；自报体重单列，不并入均值',
     `<button class="btn btn-primary" data-act="weight-add">${I.plus}记录体重</button>`);
-
-  if (!cur) {
-    $('#view').innerHTML = `<div class="stack">${emptyGuide({
-      icon: 'trend', title: '还没有体重记录', solid: true,
-      desc: '第一条体重记录会作为起点。没有记录时页面不显示示例数据，也不自动生成目标。',
-      actions: `<button class="btn btn-primary" data-act="weight-add">${I.plus}记录体重</button><button class="btn btn-ghost" data-act="body-add">${I.plus}记录围度</button>`,
-      steps: []
-    })}</div>`;
-    return;
-  }
-  const hasPlan = Number.isFinite(ARCHIVE.weight.start) && Number.isFinite(ARCHIVE.weight.target);
-  const change = hasPlan ? cur.kg - ARCHIVE.weight.start : null;
 
   $('#view').innerHTML = `
     <div class="stack">
@@ -270,22 +179,22 @@ function renderWeight() {
         </div>
         <div class="hero-div"></div>
         <div class="hero-stats">
-          <div class="stat"><small>较起点</small><b>${change === null ? '待设' : (change > 0 ? '+' : '') + change.toFixed(1)}</b><i>kg</i></div>
+          <div class="stat"><small>较起点</small><b>${change > 0 ? '+' : ''}${change.toFixed(1)}</b><i>kg</i></div>
           <div class="stat"><small>7 天晨重均值</small><b style="font-size:${bl.ok ? '22px' : '19px'}">${bl.ok ? kg1(bl.kg) : (bl.days ? '记录中' : '未建立')}</b><i>${bl.ok ? 'kg' : `还需 ${bl.need ?? 7} 天`}</i></div>
-          <div class="stat"><small>长期目标</small><b>${Number.isFinite(ARCHIVE.weight.target) ? ARCHIVE.weight.target.toFixed(1) : '待设'}</b><i>kg</i></div>
+          <div class="stat"><small>长期目标</small><b>${ARCHIVE.weight.target.toFixed(1)}</b><i>kg</i></div>
           <div class="stat"><small>近 7 天记录</small><b>${since7.length}</b><i>次</i></div>
         </div>
         <div class="hero-progress">
-          <div class="hp-row"><span>减重进度</span><b>${pct === null ? '待设置' : Math.round(pct) + ' %'}</b></div>
-          <div class="track"><i style="width:${pct === null ? 2 : Math.max(pct, 2)}%"></i></div>
-          <div class="hp-scale"><span>${Number.isFinite(ARCHIVE.weight.start) ? ARCHIVE.weight.start.toFixed(1) + ' kg' : '起点待设置'}</span><span>${Number.isFinite(ARCHIVE.weight.target) ? ARCHIVE.weight.target.toFixed(1) + ' kg' : '目标待设置'}</span></div>
-          <p class="hp-note">${hasPlan ? `距目标 ${(cur.kg - ARCHIVE.weight.target).toFixed(1)} kg${ARCHIVE.weight.stageTarget ? '　·　' + esc(ARCHIVE.weight.stageTarget) : ''}` : '起点与长期目标待设置；先连续记录，再按实际趋势设定。'}</p>
+          <div class="hp-row"><span>减重进度</span><b>${Math.round(pct)} %</b></div>
+          <div class="track"><i style="width:${Math.max(pct, 2)}%"></i></div>
+          <div class="hp-scale"><span>${ARCHIVE.weight.start.toFixed(1)} kg</span><span>${ARCHIVE.weight.target.toFixed(1)} kg</span></div>
+          <p class="hp-note">距目标 ${(cur.kg - ARCHIVE.weight.target).toFixed(1)} kg　·　${ARCHIVE.weight.stageTarget}</p>
         </div>
       </section>
 
       <section class="card chart-card">
         <div class="chart-head">
-          <div class="chart-title"><h2>体重趋势</h2><p>共 ${list.length} 条记录${Number.isFinite(ARCHIVE.weight.target) ? `　·　虚线为长期目标 ${ARCHIVE.weight.target.toFixed(1)} kg` : ''}</p></div>
+          <div class="chart-title"><h2>体重趋势</h2><p>共 ${list.length} 条记录　·　虚线为长期目标 ${ARCHIVE.weight.target.toFixed(1)} kg</p></div>
           <span class="chip ${bl.ok ? 'green' : 'amber'} chip-sm">${bl.ok ? '已建立晨重基线' : '基线待建立'}</span>
         </div>
         <div class="chart-box" id="weightChart"></div>
@@ -295,13 +204,22 @@ function renderWeight() {
 
       ${compCardHTML()}
 
-      <section class="card">
-        <div class="card-head"><h2>记录明细</h2><span class="link">${list.length} 条</span></div>
+      ${detailFold('weight', '记录明细', list.length, `
+        ${(() => {
+          const kgs = list.map(w => w.kg).filter(Number.isFinite);
+          const dates = list.map(w => w.date).filter(Boolean).sort();
+          return statsBar([
+            kgs.length ? { label: '最低', value: kg1(Math.min(...kgs)) + ' kg' } : null,
+            kgs.length ? { label: '最高', value: kg1(Math.max(...kgs)) + ' kg' } : null,
+            kgs.length ? { label: '均值', value: kg1(avg(kgs)) + ' kg', sub: `${kgs.length} 次` } : null,
+            dates.length ? { label: '记录区间', value: esc(dates[0] + ' ~ ' + dates[dates.length - 1]), sub: `${dates.length} 天` } : null
+          ]);
+        })()}
         <div class="table-wrap">
           <table class="data w-table">
             <thead><tr><th>日期</th><th>体重</th><th>条件</th><th>腰围</th><th>身体成分</th><th>备注</th><th></th></tr></thead>
             <tbody>
-              ${list.slice().reverse().map(w => `<tr>
+              ${pg.rows.map(w => `<tr>
                 <td class="date">${esc(w.date)}</td>
                 <td class="num">${kg1(w.kg)}<span style="color:var(--muted-3);font-size:9px;font-weight:400"> kg</span></td>
                 <td><span class="chip ${w.tag === 'morning' ? 'green' : 'mute'} chip-sm">${w.tag === 'morning' ? '晨重' : w.tag === 'device' ? '设备' : w.tag === 'reported' ? '自报' : '其他时段'}</span></td>
@@ -313,21 +231,20 @@ function renderWeight() {
             </tbody>
           </table>
         </div>
-      </section>
+        ${pagerHTML('weight', pg)}
+      `)}
 
       <div class="grid-2">
         <section class="card">
           <div class="card-head"><h2>称重与记录规则</h2></div>
-          ${ARCHIVE.weight.rules.length
-      ? ARCHIVE.weight.rules.map((r, i) => `<div class="task"><div class="task-body"><p class="task-text" style="font-size:12px">${i + 1}. ${esc(r)}</p></div></div>`).join('')
-      : '<div class="empty">暂无规则。建议固定同一台秤、相近衣着与晨起空腹条件。</div>'}
+          ${ARCHIVE.weight.rules.map((r, i) => `<div class="task"><div class="task-body"><p class="task-text" style="font-size:12px">${i + 1}. ${esc(r)}</p></div></div>`).join('')}
         </section>
         <section class="card">
-          <div class="card-head"><h2>当前计划</h2><span class="chip amber chip-sm">待设置</span></div>
-          <div class="tl-row"><time>摄入</time><p>${ARCHIVE.weight.kcal ? esc(ARCHIVE.weight.kcal) : '待设置'}</p></div>
-          <div class="tl-row"><time>阶段目标</time><p>${ARCHIVE.weight.stageTarget ? esc(ARCHIVE.weight.stageTarget) : '待设置'}</p></div>
-          <div class="tl-row"><time>复盘</time><p>建议连续记录 7 天后做首次周复盘，再按趋势调整。</p></div>
-          <p class="hint" style="margin-top:10px">计划需结合实际记录与身体反应调整，不自动生成结论。</p>
+          <div class="card-head"><h2>当前计划</h2><span class="chip amber chip-sm">建议值</span></div>
+          <div class="tl-row"><time>摄入</time><p>${esc(ARCHIVE.weight.kcal)}</p></div>
+          <div class="tl-row"><time>阶段目标</time><p>${esc(ARCHIVE.weight.stageTarget)}</p></div>
+          <div class="tl-row"><time>复盘</time><p>2026-11-03 首次周复盘；11-10 至 11-17 复核趋势与热量预算</p></div>
+          <p class="hint" style="margin-top:10px">以上为自行复盘计划，未设置提醒；体重变化需结合实际记录与身体反应调整。</p>
         </section>
       </div>
     </div>`;
@@ -335,9 +252,11 @@ function renderWeight() {
   const wc = $('#weightChart');
   if (wc) {
     const pts = list.map(w => ({ date: w.date, value: w.kg }));
-    paintChart(wc, pts, {
-      height: window.innerWidth < 700 ? 220 : 260,
-      target: Number.isFinite(ARCHIVE.weight.target) ? ARCHIVE.weight.target : undefined
+    echartsChart(wc, {
+      series: [{ name: '体重', points: pts }],
+      unit: 'kg',
+      target: ARCHIVE.weight.target,
+      height: window.innerWidth < 700 ? 220 : 260
     });
   }
 
@@ -464,15 +383,14 @@ function renderVitals() {
         <div class="chart-box" id="vitalsChart"></div>
       </section>
 
-      <section class="card">
-        <div class="card-head"><h2>记录明细</h2><span class="link">${list.length} 条</span></div>
+      ${detailFold('vitals', '记录明细', list.length, `
         <div class="table-wrap">
           <table class="data">
             <thead><tr><th>日期</th><th>血压</th><th>心率</th><th>体温</th><th>血氧</th><th>血糖</th><th>备注</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
-      </section>
+      `)}
     </div>`;
 
   const sel = $('#vitalMetricSelect');
@@ -491,7 +409,11 @@ function renderVitals() {
       } else {
         [low, high] = vitalRange(metric.k);
       }
-      paintChart(host, pts, { height: window.innerWidth < 700 ? 220 : 260, low, high, unit: metric.unit });
+      echartsChart(host, {
+        series: [{ name: metric.label, points: pts.map(p => ({ date: p.date, value: p.value })) }],
+        low, high, unit: metric.unit,
+        height: window.innerWidth < 700 ? 220 : 260
+      });
     }
   }
 }
@@ -530,7 +452,8 @@ function renderSleep() {
   const last = withH[0];
   const lastScore = last && Number.isFinite(last.score) ? last.score : null;
 
-  const rows = list.map(s => `<tr>
+  const pgSleep = paginate(list, 'sleep');
+  const rows = pgSleep.rows.map(s => `<tr>
       <td class="date">${esc(s.date)}</td>
       <td class="num">${Number.isFinite(s.hours) ? num(s.hours, 1) + '<span style="color:var(--muted-3);font-size:9px"> h</span>' : '<span style="color:var(--muted-3)">—</span>'}</td>
       <td class="ref" style="text-align:left">${Number.isFinite(s.minutes) ? Math.round(s.minutes) + ' 分钟' : '—'}</td>
@@ -539,6 +462,17 @@ function renderSleep() {
       <td style="color:var(--muted);font-size:10.5px">${esc(s.note || (s.source === 'mi-band' ? '小米手环' : '—'))}</td>
       <td class="act"><button class="danger" data-act="sleep-del" data-id="${esc(s.id)}">删除</button></td>
     </tr>`).join('');
+
+  const sleepStats = (() => {
+    const hs = list.map(s => s.hours).filter(Number.isFinite);
+    const dates = list.map(s => s.date).filter(Boolean).sort();
+    return statsBar([
+      hs.length ? { label: '最短', value: num(Math.min(...hs), 1) + ' h' } : null,
+      hs.length ? { label: '最长', value: num(Math.max(...hs), 1) + ' h' } : null,
+      hs.length ? { label: '均值', value: num(avg(hs), 1) + ' h', sub: `${hs.length} 晚` } : null,
+      dates.length ? { label: '记录区间', value: esc(dates[0] + ' ~ ' + dates[dates.length - 1]), sub: `${dates.length} 天` } : null
+    ]);
+  })();
 
   const tiles = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
@@ -571,22 +505,27 @@ function renderSleep() {
         </div>
         <div class="chart-box" id="sleepChart"></div>
       </section>
-      <section class="card">
-        <div class="card-head"><h2>记录明细</h2><span class="link">${list.length} 条</span></div>
+      ${detailFold('sleep', '记录明细', list.length, `
+        ${sleepStats}
         <div class="table-wrap">
           <table class="data">
             <thead><tr><th>日期</th><th>睡眠时长</th><th>折算</th><th>评分</th><th>入睡/起床</th><th>来源</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
-      </section>
+        ${pagerHTML('sleep', pgSleep)}
+      `)}
     </div>`;
 
   const host = $('#sleepChart');
   if (host) {
     const pts = sleepMetricPoints();
     if (!pts.length) host.innerHTML = '<div class="empty">这项还没有记录</div>';
-    else paintChart(host, pts, { height: window.innerWidth < 700 ? 220 : 260, low: 7, high: 9, unit: 'h' });
+    else echartsChart(host, {
+      series: [{ name: '睡眠时长', points: pts }],
+      low: 7, high: 9, unit: 'h',
+      height: window.innerWidth < 700 ? 220 : 260
+    });
   }
 }
 
@@ -594,7 +533,7 @@ function renderSleep() {
 function renderSymptoms() {
   const all = symptomsSorted();
   setHead('SYMPTOMS　症状日记', '症状日记',
-    '按日记录主观不适，可按部位回看变化',
+    '按日记录干眼、鼻炎、踝痛等主观不适，可按部位回看变化',
     `<button class="btn btn-primary" data-act="symptom-add">${I.plus}记录症状</button>`);
 
   if (!all.length) {
@@ -602,7 +541,7 @@ function renderSymptoms() {
       <section class="card">
         <div class="card-head"><h2>还没有症状记录</h2><span class="link">0 条</span></div>
         <div class="empty" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:22px 6px">
-          <p style="margin:0;color:var(--muted)">各类主观不适都可以在这里按日记一条：部位、程度、诱因、备注。之后能按部位筛出来看有没有变化，不必为每个病单独建页。</p>
+          <p style="margin:0;color:var(--muted)">干眼、鼻炎、踝痛这类主观不适，都可以在这里按日记一条：部位、程度、诱因、备注。之后能按部位筛出来看有没有变化，不必为每个病单独建页。</p>
           <button class="btn btn-primary" data-act="symptom-add">${I.plus}记录第一条症状</button>
         </div>
         <p class="hint">记录的是你的主观感受，不是诊断；程度 1–10 为自评分（1 很轻、10 难以忍受），仅作自我观察，不替代医生判断。</p>
@@ -747,8 +686,8 @@ function renderDiet() {
     </section>`;
 
   $('#view').innerHTML = `<div class="stack">${remindCard}${trendCard}${dayCard}${weekCard}</div>`;
-  if (wPts.length) { const host = $('#dietWeightChart'); if (host) paintChart(host, wPts, { height: 200 }); }
-  if (kPts.length) { const host = $('#dietKcalChart'); if (host) paintChart(host, kPts, { height: 200 }); }
+  if (wPts.length) { const host = $('#dietWeightChart'); if (host) echartsChart(host, { series: [{ name: '晨重', points: wPts }], unit: 'kg', height: 200 }); }
+  if (kPts.length) { const host = $('#dietKcalChart'); if (host) echartsChart(host, { series: [{ name: '摄入', points: kPts }], unit: 'kcal', height: 200 }); }
 }
 
 /* ---------- 每日记录表单 ---------- */
@@ -765,7 +704,7 @@ function dietDayFormHTML(rec, presetDate) {
         <div class="field"><label>腰围 <small style="color:var(--muted-3);font-weight:400">cm</small></label><input type="number" step="0.1" min="0" name="waist" value="${r.waist ?? ''}"></div>
         <div class="field"><label>睡眠 <small style="color:var(--muted-3);font-weight:400">小时</small></label><input type="number" step="0.5" min="0" max="24" name="sleep" value="${r.sleep ?? ''}"></div>
         <div class="field wide"><label>饥饿 / 精神状态</label><input name="hunger" maxlength="120" value="${esc(r.hunger || '')}" placeholder="如 下午饿、精力一般"></div>
-        <div class="field wide"><label>不适反应</label><input name="ankle" maxlength="120" value="${esc(r.ankle || '')}" placeholder="活动前 / 中 / 当晚 / 翌日、有无肿胀"></div>
+        <div class="field wide"><label>右踝反应</label><input name="ankle" maxlength="120" value="${esc(r.ankle || '')}" placeholder="活动前 / 中 / 当晚 / 翌日、有无肿胀"></div>
         <div class="field wide"><label>早餐（食物、份量、做法）</label><input name="breakfast" maxlength="300" value="${esc(r.breakfast || '')}" placeholder="未吃写“未吃”，没记写“未记录”"></div>
         <div class="field wide"><label>午餐（食物、份量、做法）</label><input name="lunch" maxlength="300" value="${esc(r.lunch || '')}" placeholder="同上"></div>
         <div class="field wide"><label>晚餐（食物、份量、做法）</label><input name="dinner" maxlength="300" value="${esc(r.dinner || '')}" placeholder="同上"></div>

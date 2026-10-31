@@ -1,0 +1,190 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>README · 个人健康档案</title><style>:root{color-scheme:light;--ink:#203831;--muted:#63746e;--accent:#276c59;--line:#dce7df}*{box-sizing:border-box}body{margin:0;background:#f3f7f2;color:var(--ink);font:16px/1.75 system-ui,'Microsoft YaHei',sans-serif}header{background:#163f34;color:#fff;padding:22px max(5vw,24px)}header a{color:#d8f1e5;text-decoration:none;font-weight:600}header span{display:block;font-size:12px;letter-spacing:.16em;color:#aed3c1}main{max-width:1050px;margin:32px auto;padding:36px 48px;background:white;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 35px #194f3010}h1{font-size:2em;line-height:1.3;margin:0 0 14px}h2{border-top:1px solid var(--line);padding-top:24px;margin-top:32px;font-size:1.4em}h3{margin-top:24px}a{color:var(--accent);overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:.93em}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#edf5ef} .table-wrap{overflow-x:auto}blockquote{margin:20px 0;padding:1px 18px;border-left:4px solid #91bda7;background:#f1f7f2;color:#415c4e}img{max-width:100%;height:auto}footer{max-width:1050px;margin:auto;padding:0 24px 32px;color:var(--muted);font-size:.85em}@media(max-width:600px){main{margin:12px;padding:24px 20px;border-radius:10px}header{padding:16px 20px}h1{font-size:1.65em}}@media print{body{background:white}main{box-shadow:none;border:0;margin:0;padding:0}header{background:white;color:black}header a{color:black}}</style></head><body><header><span>PERSONAL HEALTH RECORD</span><a href="index.html">个人健康档案 / 首页</a></header><main><h1>个人健康档案</h1>
+<p>整理更新：2026-10-30（香港时间）。<strong>页面入口：<a href="index.html">index.html</a></strong>（档案应用，需用浏览器打开）。第一次用先看 <strong><a href="docs/%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97.html">docs/使用指南.md</a></strong>（怎么打开、怎么录入、数据在哪、出问题怎么办）。不想看 Markdown 就双击 <code>README.html</code>，是这一页的渲染版。</p>
+<h2>目录结构</h2>
+<p>2026-10-30 做过一次目录整理，现在只有两个内容根：</p>
+<pre><code>F:/Health/
+├─ index.html        档案应用入口（双击打开）
+├─ assets/           应用代码：样式、档案数据、解析引擎、路由
+├─ server/           可选的图片识别服务（本机 127.0.0.1:8765）
+├─ Tools/            脚本：解析回归、端到端测试、影像分析、链接检查
+├─ docs/             文档：Markdown 底稿 + 生成的 HTML 页面
+└─ data/             数据：报告照片、影像、导出的 CSV —— 不进 Git
+</code></pre>
+<p><code>docs/</code> 与 <code>data/</code> 分开的理由：<strong>文档可以进版本库、可以发给别人看；数据不行</strong>。放在同一个目录里，一次误提交就会把照片和原始导出带上。<code>.gitignore</code> 已默认忽略 <code>data/</code> 与根目录下一切未放行的条目。</p>
+<h2>文档：docs/</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>放什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>docs/使用指南.md</code></td>
+<td>界面怎么用、四条录入通道、数据存哪、常见问题</td>
+</tr>
+<tr>
+<td><code>docs/HANDOFF.md</code></td>
+<td>交接说明：架构、数据模型、关键决策、已知坑、待办与验收命令（给接手维护的人看）</td>
+</tr>
+<tr>
+<td><code>docs/健康档案/</code></td>
+<td>个人资料、健康问题总表、用药记录、检查与就诊时间线、复诊与待办、就诊记录模板；旧版检验录入页 <code>检验趋势.html</code>（与首页共享同一份数据）</td>
+</tr>
+<tr>
+<td><code>docs/减重记录/</code></td>
+<td>目标与计划、热量估算规则、每周复盘、每日记录</td>
+</tr>
+<tr>
+<td><code>docs/主题/&lt;主题&gt;/</code></td>
+<td>各主题的原始记录与整理分析，一个主题一个目录</td>
+</tr>
+</tbody></table></div>
+<p>每个 <code>.md</code> 旁边有一份同名 <code>.html</code>，是给人直接看的渲染版（<code>Tools/生成HTML档案.cjs</code> 生成，已有 HTML 不覆盖）。改内容改 <code>.md</code>，需要时重新生成 HTML。</p>
+<p><code>docs/主题/</code> 下不列目录名——目录名本身就是健康信息。要看有哪些主题，直接打开文件夹，或在页面的时间线与健康问题视图里跳转。</p>
+<h2>数据：data/</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>放什么</th>
+<th>是否进 Git</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>data/health.db</code></td>
+<td><strong>页面里录入的全部数据</strong>（检验、体重、围度、勾选、报告索引），SQLite 库文件</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/报告原件/files/</code></td>
+<td>页面里存的报告照片，一份报告一个文件，文件名是报告 id</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/报告原件/</code></td>
+<td>原始化验单照片，以及挂在外面的转写稿；文件名 <code>日期-机构-项目.jpg</code></td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/照片/</code></td>
+<td>症状照片（如舌苔、皮损），文件名 <code>部位-日期.jpg</code></td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/影像/&lt;部位&gt;/检查/</code></td>
+<td>医院给的原片（DICOM），一次检查一个目录</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/影像/&lt;部位&gt;/&lt;分析&gt;/</code></td>
+<td>由原片渲染出的切片图、序列汇总 JSON、关键图</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/小米健康数据/</code></td>
+<td>手环/体脂秤导出的原始 CSV 包，保持导出时的目录结构不动</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>data/设计稿/</code></td>
+<td>界面设计图</td>
+<td>否</td>
+</tr>
+</tbody></table></div>
+<p><code>data/</code> 里的东西是<strong>原件、数据库与派生物</strong>，不是档案结论。结论写在 <code>docs/</code> 的 Markdown 里，指向这里的具体文件。删掉 <code>data/报告原件/</code> 里的照片，页面记录还在但会失去可追溯的原件；删掉 <code>data/health.db</code> 则是记录本身没了。</p>
+<h2>界面</h2>
+<p><code>index.html</code> 是单页档案应用，左侧目录对应七个视图：总览、健康问题、检验指标、检查时间线、用药记录、复诊待办、减重记录；个人资料与备份在左下角“数据仅存本机”卡片里，移动端在底部“更多”。</p>
+<p>检验指标页下面还有一个子页「全部记录」（<code>#/labs-all</code>）：检验页的「最近录入」只放 8 条，这里才是全部结果，按日期分组，可按项目/备注/医院搜索、按类别与来源报告筛选，每条都能编辑或删除。入口在检验页页头「全部记录」与「最近录入」右上角。</p>
+<ul>
+<li>只读内容（主题、证据、时间线、用药）来自 <code>assets/data.js</code>，它是 <code>docs/</code> 下 Markdown 的结构化摘要。改内容要两边都动：先改 Markdown，再同步 <code>data.js</code>。</li>
+<li>可写内容（检验结果、体重记录、身体围度、待办勾选、报告原件）存在<strong>本机 SQLite 数据库</strong> <code>data/health.db</code>，报告照片存成 <code>data/报告原件/files/</code> 下的真实文件。启动方式：双击根目录 <code>启动健康档案.bat</code>，浏览器会打开 <code>http://127.0.0.1:8765/</code>。</li>
+<li>为什么不再用浏览器存储：localStorage 上限约 5 MB，报告照片一多就撑爆；换浏览器、清站点数据就全没了。数据库没有这个限制，换浏览器也不影响。</li>
+<li>只有一份数据：不在浏览器里留副本。反过来，删掉 <code>data/health.db</code> 就真的没了——请定期用「导出完整备份」或在磁盘层面备份 <code>data/</code> 目录。</li>
+<li>降级行为：服务没启动时页面仍能打开，但会退回浏览器存储并明确提示（侧栏显示「浏览器存储模式」）。这不是同一份数据，只是应急；连上服务后可在「个人资料 → 数据存储」里点「合并浏览器数据」把它并进库里（按日期｜类别｜项目｜单位去重，点两次不会翻倍）。</li>
+<li><code>?offline=1</code> 参数强制浏览器存储模式，自动化测试用它避免把测试数据写进真库。</li>
+<li>备份（<code>health-archive</code> v2）含检验、体重、围度、勾选状态与报告原件图片；服务模式下由 <code>/api/export</code> 生成，把磁盘上的图片读回 base64。导入按记录 ID 合并，再按项目去重，也兼容只有 <code>labs</code> 的 v1 备份。</li>
+<li>界面文件：<code>assets/styles.css</code>、<code>assets/data.js</code>（档案内容数据）、<code>assets/parse.js</code>（报告解析）、<code>assets/app.js</code>（路由与交互）。</li>
+<li>服务文件：<code>server/health_server.py</code>（页面 + 数据库 + 识别）、<code>server/ocr_server.py</code>（识别逻辑，被前者复用）、<code>server/.venv/</code>（依赖，不进 Git）。只监听 <code>127.0.0.1</code>，不对外。</li>
+</ul>
+<h2>导入数据</h2>
+<p>四个通道（都在弹层里，解析全程在本机，不联网）：</p>
+<ul>
+<li>粘贴文本：把医院 App 或体检报告的文字复制进来，自动识别项目名、数值、单位、参考范围和日期；识别结果先进预览表，逐行确认后才写入。</li>
+<li>图片识别：选报告照片，交给本机的识别服务转成文字（见下）。识别结果会填进文字框，可以改错字再解析。</li>
+<li>CSV 文件：体检中心导出的表格，需含「项目」和「结果」两列表头（Excel 请先另存为 CSV）。</li>
+<li>JSON 备份：整库恢复或只导入其中一部分。先按记录 ID 合并，再按「日期｜类别｜项目｜单位」去重——同一项以文件里的为准，重复导入不会翻倍。</li>
+</ul>
+<p>预览表里低置信度的行（缺单位、缺参考范围）默认不勾选，需人工看过再勾。同一天、同项目、同单位的记录会按“更新”处理，重复导入不会翻倍。报告没印单位时，勾选后按 <code>—</code> 记录（不编造单位）；没印参考区间就留空，趋势图不画色带，图例写「N 次无参考区间」而不是「均正常」。</p>
+<p>已适配医院报告的常见形态：行首序号、<code>*</code> 互认标记、方法学括注（<code>项目名(酶法)</code>）、尾部英文缩写（<code>项目名 ENG</code>）、双横线区间（<code>下限--上限</code>）、页脚两位年份采样时间（<code>YY-MM-DD</code>，自动补全世纪）。正文日期优先于弹层里填的默认日期。报告写「标本类型」时会据此判类别——尿里的白细胞、红细胞归到「其他」，不会混进血常规。定性结果（阴性/阳性/normal）不进数值库，会列在「跳过」清单里说明原因。</p>
+<p>解析引擎在 <code>assets/parse.js</code>（纯函数，可独立测试）。回归用例：<code>Tools/test-parse.cjs</code>（70 项）、<code>Tools/e2e-import.js</code>（25 项）、<code>Tools/e2e-report.js</code>（24 项，报告原件）、<code>Tools/e2e-ocr.js</code>（19 项，图片识别）。</p>
+<h2>图片识别服务（可选）</h2>
+<p>装在 <code>server/</code>，不装也能用其它三个通道。</p>
+<ul>
+<li>用途只有一个：把报告照片认成文字行。它不判断哪个数字是哪个指标，识别结果一律进「导入数据」的预览表由人确认。</li>
+<li>启动：双击 <code>启动健康档案.bat</code>，窗口显示「引擎 就绪」即可；用完关掉窗口。首次或换电脑先跑 <code>server/安装依赖.bat</code>。</li>
+<li>只监听 <code>127.0.0.1:8765</code>，照片在内存里过一遍就丢，不落盘、不上传、不写日志。页面仍是双击打开的 <code>file://</code>，<strong>存储位置不变</strong>（不会因为用了服务就变成另一份数据）。</li>
+<li>引擎是 RapidOCR（PP-OCRv6 的 ONNX 模型，纯 CPU），一张全页报告约 1–3 秒；识别时会把同一行里的多个单元格用制表符拼回一行，正好是解析器要吃的格式。</li>
+<li>容易认错的类型（都在文字框里改掉即可）：方法学括注、带斜杠的单位、希腊字母、英文缩写里多出的空格、上下箭头。置信度低的行会在文字框下方提示行数。</li>
+<li>不想装服务时的替代：用手机系统取字（iOS 实况文本、安卓长按提取文字）后粘贴；或把图片给助手，由助手读图转成可粘贴的文本（<code>docs/健康档案/</code> 下有这么来的转写稿，文件名带日期）。</li>
+</ul>
+<h2>报告原件</h2>
+<p>检验页「报告原件」卡：</p>
+<ul>
+<li>每份报告登记日期、名称、机构、备注，可选一张原件图片（拍照或截图，自动压到长边 1500px 后存进本机数据库旁的 <code>data/报告原件/files/</code>）。</li>
+<li>报告有三层名称，由具体到笼统：<strong>报告名称</strong>（医院打印的申请项目，如「肝肾常规」）→ <strong>项目组套</strong>（大类，如「生化」「血常规」）→ <strong>检验样本</strong>（血清 / 血浆 / 全血 / 尿液 …）。后两项是自由填写 + 候选列表，报告没写就留空，不推测。</li>
+<li>从图片识别或粘贴文本导入时，报告表头里的「标本类型」「申请项目」会自动预填到新建报告表单，预填值可改；没有这两行就空着。</li>
+<li>导入结果时在预览页选「归到」哪份报告，单个录入/编辑时也有「所属报告」下拉；不关联也可以，表格里显示 —。</li>
+<li>「最近录入」表的「报告」列可点开原件；删除报告不会删除结果，只解除关联。</li>
+<li>走「图片识别」导入时，预览页选「＋ 新建一份报告」会把刚才的照片一起存成原件，不用再传一次。</li>
+<li>图片不受浏览器配额限制（存 SQLite 旁边的真实文件），只受磁盘空间限制。原始照片另存在 <code>data/报告原件/</code>，与应用里那份互不依赖。</li>
+</ul>
+<p>表格里的「提示」是单独一列：<code>↑</code> 高于参考上限、<code>↓</code> 低于下限、<code>·</code> 在区间内、<code>—</code> 未填参考范围无法判断。超范围只影响这一列的符号与数值颜色，不会塞进结果数字里。</p>
+<p>空状态不填假数据：没有检验结果时图表为空，可点“预览示例”查看样式，示例不会写入存储。</p>
+<h2>脚本</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>脚本</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Tools/test-parse.cjs</code></td>
+<td>解析引擎回归（纯 Node，不用浏览器）</td>
+</tr>
+<tr>
+<td><code>Tools/e2e-import.js</code> / <code>e2e-report.js</code> / <code>e2e-ocr.js</code></td>
+<td>浏览器端到端，<code>?offline=1</code> 走浏览器存储（Playwright + 本机 Chrome）</td>
+</tr>
+<tr>
+<td><code>Tools/e2e-server.js</code></td>
+<td>服务模式端到端：独立端口 8799 + 临时库，验证落库、图片文件、导出、删除</td>
+</tr>
+<tr>
+<td><code>Tools/检查文档链接.py</code></td>
+<td>扫 <code>docs/</code> 下 md/html 的相对链接，report 断链</td>
+</tr>
+<tr>
+<td><code>Tools/生成HTML档案.cjs</code></td>
+<td>Markdown → HTML 渲染（已有 HTML 不覆盖）</td>
+</tr>
+<tr>
+<td><code>Tools/影像分析/</code></td>
+<td>DICOM 渲染与关键图拼版；运行时在其 <code>runtime/</code> 下</td>
+</tr>
+</tbody></table></div>
+<p>改过目录结构或加过文档后，跑一次 <code>python Tools/检查文档链接.py</code>，确认没有断链。</p>
+<h2>更新约定</h2>
+<ol>
+<li>日常新增饮食、体重与活动，写入当月减重记录；每周填写一次复盘。</li>
+<li>就诊或检查后，保存原件，补一条时间线，再更新问题总表、用药和待办。</li>
+<li>日期统一为YYYY-MM-DD；体重以kg为主，同时可写斤（1kg＝2斤）；能量统一用kcal（千卡）。</li>
+<li>明确区分“本人描述”“医院报告”“医生诊断”“辅助分析”“建议计划”。文件夹名称、空文件和未验证的推测不作为确诊依据。</li>
+<li>空白代表未记录，不等于没有症状、没有过敏或数值为0。历史用药不自动视为当前用药。</li>
+<li>页面上能直接改的内容（检验结果、体重、围度、待办勾选、报告原件）存在 <code>data/health.db</code> 里，<code>docs/</code> 的 <code>.md</code> 是文字底稿，两套互不同步；改了页面不会回写文件，改了文件也不会刷新页面。</li>
+<li><strong>README、使用指南等说明性文件里不写任何个人健康信息</strong>：不写指标数值、不写诊断与症状、不写体重、不写药名、不写机构名和就诊日期、不列带病名的目录。需要举例一律用占位符（<code>项目名</code>、<code>YYYY-MM-DD</code>、<code>下限--上限</code>、<code>机构</code>）。档案内容只留在档案文件与 <code>data/health.db</code> 里。</li>
+<li>新文件先判断归属：<strong>看得懂、能公开</strong>的进 <code>docs/</code>，<strong>原件与导出</strong>进 <code>data/</code>，<strong>代码</strong>进 <code>assets/</code> 或 <code>Tools/</code>。</li>
+</ol>
+<p>本次以结构化记录整理档案，既有文字、报告、影像及其路径保留。各总表只做导航和摘要，详细表述以对应来源为准。</p>
+</main><footer>本地健康档案 · 请根据实际情况更新记录</footer></body></html>

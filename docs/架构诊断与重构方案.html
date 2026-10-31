@@ -1,0 +1,413 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>架构诊断与重构方案 · 个人健康档案</title><style>:root{color-scheme:light;--ink:#203831;--muted:#63746e;--accent:#276c59;--line:#dce7df}*{box-sizing:border-box}body{margin:0;background:#f3f7f2;color:var(--ink);font:16px/1.75 system-ui,'Microsoft YaHei',sans-serif}header{background:#163f34;color:#fff;padding:22px max(5vw,24px)}header a{color:#d8f1e5;text-decoration:none;font-weight:600}header span{display:block;font-size:12px;letter-spacing:.16em;color:#aed3c1}main{max-width:1050px;margin:32px auto;padding:36px 48px;background:white;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 35px #194f3010}h1{font-size:2em;line-height:1.3;margin:0 0 14px}h2{border-top:1px solid var(--line);padding-top:24px;margin-top:32px;font-size:1.4em}h3{margin-top:24px}a{color:var(--accent);overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:.93em}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#edf5ef} .table-wrap{overflow-x:auto}blockquote{margin:20px 0;padding:1px 18px;border-left:4px solid #91bda7;background:#f1f7f2;color:#415c4e}img{max-width:100%;height:auto}footer{max-width:1050px;margin:auto;padding:0 24px 32px;color:var(--muted);font-size:.85em}@media(max-width:600px){main{margin:12px;padding:24px 20px;border-radius:10px}header{padding:16px 20px}h1{font-size:1.65em}}@media print{body{background:white}main{box-shadow:none;border:0;margin:0;padding:0}header{background:white;color:black}header a{color:black}}</style></head><body><header><span>PERSONAL HEALTH RECORD</span><a href="../index.html">个人健康档案 / 首页</a></header><main><h1>健康档案 · 架构诊断与重构方案</h1>
+<blockquote>
+<p>只读分析产出，未改动任何代码或档案文件。分析对象：<code>server/health_server.py</code>、<code>assets/data.js</code>、<code>js/*</code>、<code>data/health.db</code>、<code>private_data/</code>、<code>Tools/*</code>。
+目标：① 诊断&quot;服务与数据&quot;耦合；② 提出 <code>private_data/</code> 去重方案；③ 给出按科室的&quot;病例(case)&quot;目录结构方案与落地步骤。</p>
+</blockquote>
+<hr>
+<h2>第一部分 · 服务与数据耦合诊断</h2>
+<p>结论先行：本项目存在<strong>三重数据轨</strong>——同一份检验/就诊信息同时被写在 <strong>①SQLite DB</strong>、<strong>②手写 <code>assets/data.js</code></strong>、<strong>③<code>private_data/健康档案/*.md</code></strong> 三处，且后端、前端、生成脚本又各自<strong>硬编码了中文主题名/目录结构/指标名</strong>。这是数据腐化、结论过期、迁移困难的总根源。以下逐点列出（文件:行号）。</p>
+<h3>1.1 后端硬编码（server/health_server.py）</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>硬编码内容</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>health_server.py:53-56</code></td>
+<td><code>DB_PATH=ROOT/&quot;data&quot;/&quot;health.db&quot;</code>、<code>IMG_DIR=ROOT/&quot;data&quot;/&quot;报告原件&quot;/&quot;files&quot;</code>、<code>ORIG_DIR=ROOT/&quot;data&quot;/&quot;报告原件&quot;</code>——<strong>把中文目录名&quot;报告原件&quot;写进代码</strong></td>
+<td>目录改名/迁移即 500；与 <code>data/右脚踝/…</code>、<code>data/照片/</code> 等真实原件位置<strong>并不统一</strong>（见 1.4），原件服务只认&quot;报告原件&quot;，其它目录的图片扫不到</td>
+</tr>
+<tr>
+<td><code>health_server.py:67</code></td>
+<td><code>ORIG_EXTS</code> 扩展名白名单</td>
+<td>新增格式（如 .dcm 之外的影像）需改码</td>
+</tr>
+<tr>
+<td><code>health_server.py:109</code> <code>init_db</code></td>
+<td>建 19 张表（labs/reports/weights/body/todo/meta/allergy/family_history/surgery/visit/medication/vitals/symptom/diet_day/diet_week/sleep_log/issue_status/todo_item）</td>
+<td>表结构演进无迁移机制（<code>CREATE TABLE IF NOT EXISTS</code>，加列不会自动 ALTER）</td>
+</tr>
+<tr>
+<td><code>replace_labs</code> 等</td>
+<td>全部&quot;整表替换&quot;写模式：<code>DELETE FROM</code> + <code>executemany</code></td>
+<td>并发/半失败会清空整表；无法做增量审计</td>
+</tr>
+<tr>
+<td><code>health_server.py:940-946</code></td>
+<td>静态托管整个 <code>ROOT</code> 目录（有&quot;target 必须以 ROOT 开头&quot;的路径穿越校验）</td>
+<td>把 <code>data/health.db</code>、<code>server/.venv</code>、<code>private_data/</code> 全部暴露为可下载静态资源（PHI 泄露面）；ACL 冲突也源于此宽托管</td>
+</tr>
+<tr>
+<td><code>health_server.py:58</code></td>
+<td><code>backup_db</code> 每日快照到 <code>data/backups/health-YYYY-MM-DD.db</code> 保留 30 天</td>
+<td>备份与主库同盘同目录，磁盘损坏时一起丢；且 <code>health.db-wal/-shm</code> 存在说明有未 checkpoint 的写入</td>
+</tr>
+</tbody></table></div>
+<h3>1.2 前端硬编码（js/、assets/）</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>硬编码内容</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>assets/data.js:6</code> <code>const ARCHIVE</code></td>
+<td><strong>整个档案内容手写在 JS 常量里</strong>：<code>profile/weight/statuses/issues[9]/timeline/meds/todos</code>，<code>updated=&#39;2026-10-27&#39;</code></td>
+<td>与 DB、与 md 三处各写一份，<strong>手工维护、必然脱节</strong></td>
+</tr>
+<tr>
+<td><code>data.js:73-96,118-119,137,153,169,183</code></td>
+<td><code>issues[].files[].href</code> 硬编码 <code>private_data/主题/右脚踝/…</code>、<code>主题/眼睛/…</code> 等<strong>中文主题路径</strong></td>
+<td>目录按病例/科室重组后，全部死链</td>
+</tr>
+<tr>
+<td><code>data.js</code> issues <code>id</code></td>
+<td><code>weight/ankle/eyes/septum/rhinitis/liver/hair/teeth/urinary</code> 与 9 个主题<strong>一一绑定</strong></td>
+<td>病例模型改变即失效</td>
+</tr>
+<tr>
+<td><code>app.core.js:58</code></td>
+<td><code>CATS=[&#39;血常规&#39;,&#39;肝功能&#39;,&#39;肾功能&#39;,&#39;其他&#39;]</code></td>
+<td>化验分类写死前端；DB 里 category 实际还有&quot;其他&quot;兜底桶，语义不一致</td>
+</tr>
+<tr>
+<td><code>app.core.js:59-64</code></td>
+<td><code>PRESETS</code> 硬编码指标名（肾功能预设含肌酐/尿素/尿酸/eGFR 等）</td>
+<td>新增指标要改前端</td>
+</tr>
+<tr>
+<td><code>app.core.js:299</code></td>
+<td><code>SYMPTOM_PARTS=[&#39;眼睛&#39;,&#39;鼻&#39;,&#39;右踝&#39;,&#39;膝&#39;,&#39;腰&#39;,&#39;头&#39;,&#39;咽&#39;,&#39;皮肤&#39;,&#39;胃肠&#39;,&#39;其他&#39;]</code></td>
+<td>部位写死，不含&quot;牙齿/脚趾/泌尿/脱发&quot;等本项目真实主题</td>
+</tr>
+<tr>
+<td><code>app.core.js:430</code></td>
+<td><code>PANELS</code> 面板名硬编码</td>
+<td>视图增删需改码</td>
+</tr>
+<tr>
+<td><code>app.derive.js:379</code></td>
+<td><code>PRIORITY</code> 硬编码主题顺序 <code>[&#39;过敏史&#39;,&#39;腰围&#39;,&#39;睡眠与作息&#39;,&#39;肝肾功能&#39;,&#39;鼻炎&#39;,&#39;脱发&#39;,&#39;牙齿·甲沟炎·脚气&#39;,&#39;尿频尿急尿不尽&#39;]</code></td>
+<td>排序写死，加病例要改码</td>
+</tr>
+<tr>
+<td><code>app.derive.js:73-126</code> <code>deriveLabIssue</code></td>
+<td>仅 <code>liver</code>（<code>labDerived={&#39;肾功能&#39;,&#39;肝功能&#39;}</code>）从 labs 实时派生，其余 8 个主题结论<strong>仍是 <code>data.js</code> 手写</strong></td>
+<td>只有 1/9 结论会随数据更新，其余会过期（P0 根源）</td>
+</tr>
+</tbody></table></div>
+<h3>1.3 生成脚本硬编码（Tools/）</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>硬编码内容</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>Tools/生成主题档案.cjs:21-28</code></td>
+<td>主题清单写死 8 条 <code>docs/主题/鼻子/鼻炎.md</code> … <code>尿频尿急尿不尽.md</code></td>
+<td>新增/重命名主题要改脚本</td>
+</tr>
+<tr>
+<td><code>Tools/生成HTML档案.cjs:6</code></td>
+<td>需渲染的 <code>docs/</code> 子目录列表写死（<code>docs/健康档案</code>、<code>docs/减重记录</code>、<code>docs/主题/眼睛</code>…<code>右脚踝/longitudinal_analysis</code>、<code>右脚踝/ct_analysis</code>）</td>
+<td>目录改名即漏渲染</td>
+</tr>
+<tr>
+<td><code>Tools/生成问题总表.cjs:11,124</code></td>
+<td>输出路径写死 <code>docs/健康档案/健康问题总表.md</code>；<code>[原文件](../主题/肾功能/肝肾功能检查.md)</code> 兜底链接写死主题路径</td>
+<td>迁移后断链</td>
+</tr>
+<tr>
+<td><code>Tools/迁移修正链接.py:21-55</code></td>
+<td>一次性迁移脚本，硬编码 <code>健康档案/→docs/健康档案/</code>、<code>眼睛/→docs/主题/眼睛/</code>… 主题名映射</td>
+<td>证明历史上已做过一次&quot;按主题分目录&quot;迁移，每次都要手改脚本——正是本次想避免的</td>
+</tr>
+</tbody></table></div>
+<h3>1.4 DB 与磁盘的&quot;双轨/错位&quot;</h3>
+<ul>
+<li><strong>service 认知的原件目录 ≠ 真实原件目录</strong>：后端只服务 <code>data/报告原件/files/</code>（<code>IMG_DIR</code>），但 <code>data/</code> 下真实影像原件分布在 <code>data/右脚踝/检查/…</code>（含完整 DICOM 序列，数十个子目录）、<code>data/照片/</code>；<code>reports</code> 表 5 条 <code>file</code> 字段指向 <code>/files/&lt;uuid&gt;.jpg</code>。<strong>两套图片位置并存</strong>，DB 记录的原件路径与磁盘真实文件不保证一一对应。</li>
+<li><strong>DB 有 45 条 labs / 5 条 reports / 2 条 weights / 1 条 body</strong>，但 md 与 data.js 又各自把同样的数字抄了一遍（见 1.5）。</li>
+<li><strong>visit / medication / allergy / vitals / symptom 等表全部 0 行</strong>，但 <code>就诊记录待填清单.md</code> 已按时间线列出 7 条候选就诊、<code>用药记录.md</code> 有内容——<strong>信息只存在于 md，未入库</strong>；而 <code>todo</code> 表只有 1 行，<code>复诊与待办.md</code> 却有多条。</li>
+</ul>
+<h3>1.5 三重轨重复的实证（同一事实写三处）</h3>
+<p>以&quot;2026-09-04 肝肾功能 肌酐112/尿酸440/eGFR77.7&quot;为例，同时存在于：</p>
+<ol>
+<li><strong>DB</strong>：<code>labs</code> 表 45 条中的肾功能 8 项 + 肝功能 12 项；</li>
+<li><strong><code>data.js</code></strong>：<code>issues</code> 里 liver 的 card/head/evidence（部分手写）；</li>
+<li><strong><code>健康档案/健康问题总表.md:12</code>（手写主题行）+ <code>:21-28</code>（AUTO 自动派生块）</strong>。</li>
+</ol>
+<p>以&quot;右踝四次影像&quot;为例，同一批骨折/韧带摘要同时存在于：</p>
+<ul>
+<li><code>健康档案/检查与就诊时间线.md:7-15</code>；</li>
+<li><code>健康档案/就诊记录待填清单.md:13-18</code>；</li>
+<li><code>主题/右脚踝/longitudinal_analysis/右踝四次检查对照分析.md</code>；</li>
+<li><code>data.js</code> 的 <code>timeline[]</code> 与 <code>issues[ankle].timeline</code>。</li>
+</ul>
+<blockquote>
+<p>注意 <code>健康问题总表.md</code> 已有局部治理：<code>:16-29</code> 的 <code>&lt;!-- AUTO:LABS --&gt;</code> 块由 <code>生成问题总表.cjs</code> 从 DB 自动派生（方向正确），但<strong>上方 <code>:5-14</code> 表格的&quot;肝肾功能&quot;行仍是手写</strong>，两处并存，AUTO 块只覆盖&quot;检验摘要&quot;、没覆盖&quot;主题结论&quot;，所以双轨未真正消除。</p>
+</blockquote>
+<h3>1.6 耦合点清单小结与风险分级</h3>
+<p><strong>必须改（P0，直接影响数据正确性/安全）</strong></p>
+<ul>
+<li>结论三处手写（<code>data.js</code> + 总表手写行 + md）→ 用户看到过期/错误结论；</li>
+<li>后端宽静态托管整个 ROOT（PHI 泄露 + ACL 冲突根源）；</li>
+<li><code>visit</code>/<code>medication</code> 已有 md 内容却未入库（信息孤岛）。</li>
+</ul>
+<p><strong>应尽快改（P1）</strong></p>
+<ul>
+<li><code>data.js</code> 硬编码中文主题路径（重组即死链）；</li>
+<li>9 个 issue 只有 1 个走派生；</li>
+<li>后端 <code>报告原件</code> 中文目录 vs 真实影像目录错位。</li>
+</ul>
+<p><strong>可规划改（P2）</strong></p>
+<ul>
+<li><code>CATS/PRESETS/SYMPTOM_PARTS/PRIORITY</code> 等前端常量；</li>
+<li>生成脚本主题清单；</li>
+<li>备份与主库同盘。</li>
+</ul>
+<hr>
+<h2>第二部分 · private_data/ 去重方案</h2>
+<h3>2.1 重复类型盘点</h3>
+<p><strong>(A) md 与 html 孪生（机械重复，保留 md 为源）</strong></p>
+<ul>
+<li>全部 26 个 md 都有同名 <code>.html</code>（<code>build-docs.cjs</code> 生成物，共约 60 文件中 html 占近一半）。<strong>这些不是&quot;内容重复&quot;，是构建产物</strong>。处置：html 一律视为派生物，<code>.gitignore</code> 或统一由 <code>build-docs.cjs</code> 重新生成，<strong>不手工编辑、不作为去重对象</strong>。</li>
+</ul>
+<p><strong>(B) 同主题&quot;多份 md&quot;重复（真正的冗余）</strong></p>
+<ul>
+<li><code>主题/眼睛/</code>：<code>2026-10-22_干眼与视觉症状沟通记录.md</code>（9689B，完整症状梳理）+ <code>病历.md</code>（119B，仅 3 行 2026-05-23 三种滴眼液）——<strong>同一眼病拆成两文件</strong>，应合并为一份&quot;眼科病例&quot;下的两条记录（症状沟通 + 用药小记），而非两个顶层主题文件。</li>
+<li><code>主题/鼻子/</code>：<code>鼻炎.md</code>（空壳模板 0/5）+ <code>鼻中隔偏曲.md</code>（有 4 行真实内容）——<strong>同科两文件</strong>，应合并为&quot;耳鼻喉科&quot;下同一病例或两个并列 case。</li>
+<li><code>主题/右脚踝/</code>：<code>ct_analysis/右踝CT辅助分析.md</code> + <code>longitudinal_analysis/右踝四次检查对照分析.md</code> + <code>右踝复诊沟通单.md</code>——三份并非重复（CT 读片 / 纵向对照 / 复诊沟通，各司其职），但<strong>同属&quot;骨科·右踝&quot;一个病例</strong>，应归到同一 case 目录，避免与健康档案时间线重复摘录影像结论。</li>
+</ul>
+<p><strong>(C) 空壳模板重复（同构空文件）</strong></p>
+<ul>
+<li><code>牙齿.md / 甲沟炎.md / 脚气.md / 鼻炎.md / 雄脱.md / 肝肾功能检查.md / 尿频尿急尿不尽.md</code> 全为同一五段模板、完整度 0/5（见 <code>Tools/生成主题档案.cjs</code> 模板）。<strong>7 个结构完全相同的空壳</strong>，本质是&quot;待补占位&quot;，不应各自成&quot;主题&quot;，而应由统一&quot;病例模板&quot;承载，按科室归位后标&quot;待采集&quot;。</li>
+</ul>
+<p><strong>(D) 健康档案 ↔ 主题 交叉重复（最关键）</strong></p>
+<ul>
+<li><strong>化验/就诊记录双写</strong>：<code>健康档案/检查与就诊时间线.md</code> 与 <code>就诊记录待填清单.md</code> 与 <code>data.js timeline[]</code> 与各主题影像分析，反复抄同一批右踝/眼科/鼻科/化验事件（见 1.5）。</li>
+<li><strong>化验结论双写</strong>：<code>健康档案/健康问题总表.md</code> 手写行 vs AUTO 派生块 vs <code>data.js</code> vs <code>labs</code> 表。</li>
+<li><strong>减重</strong>：<code>减重记录/目标与计划.md</code>、<code>每日记录/2026-10.md</code>、<code>weights</code> 表、<code>data.js.weight</code> 又各一份。</li>
+</ul>
+<p><strong>(E) 旧版/新版并存</strong></p>
+<ul>
+<li>未见明显 <code>_old</code>/<code>v2</code> 文件；但 <code>data/右脚踝/检查/</code> 下 2025-12/2026-02/2026-07/2026-08 四个检查各一目录是<strong>时间序列</strong>（非版本），应保留。</li>
+<li><code>迁移修正链接.py</code> 暗示曾从&quot;根目录按主题&quot;迁到&quot;docs+data 两根&quot;，历史路径痕迹已清，但<strong>md 内相对链接深度不一</strong>（<code>../../data/…</code>、<code>../../../..</code>、<code>../../../../</code>），是迁移残留的脆弱点。</li>
+</ul>
+<h3>2.2 去重原则（单一事实源 SSOT）</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>信息类型</th>
+<th>唯一事实源（SSOT）</th>
+<th>其它载体角色</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>检验数值/异常</td>
+<td><strong>DB <code>labs</code></strong></td>
+<td>md/前端只读派生，不手写数值</td>
+</tr>
+<tr>
+<td>影像报告结论</td>
+<td><strong>DB <code>reports</code> + 原件文件</strong></td>
+<td>md 只写&quot;解读/对照&quot;，不重复抄报告全文三遍</td>
+</tr>
+<tr>
+<td>就诊事件</td>
+<td><strong>DB <code>visit</code></strong>（当前 0 行，应先补录）</td>
+<td>时间线/待填清单降级为&quot;视图&quot;或干脆取消</td>
+</tr>
+<tr>
+<td>症状主观描述</td>
+<td>对应 case 的 md 正文</td>
+<td>单一文件，不再拆两处</td>
+</tr>
+<tr>
+<td>体重/围度</td>
+<td><strong>DB <code>weights</code>/<code>body</code></strong></td>
+<td>减重.md 只写规则与复盘</td>
+</tr>
+<tr>
+<td>档案结构/模板</td>
+<td>case 模板文件</td>
+<td>空壳由模板+科室归位承载</td>
+</tr>
+</tbody></table></div>
+<h3>2.3 去重执行清单（不改文件的建议动作，供后续执行）</h3>
+<ol>
+<li><strong>固化 html 为派生物</strong>：<code>private_data/**/*.html</code> 纳入 <code>.gitignore</code>（或保留但声明不可手改），只维护 md；由 <code>build-docs.cjs</code> 统一重生成。</li>
+<li><strong>合并眼科两文件</strong>：<code>2026-10-22_干眼与视觉症状沟通记录.md</code> + <code>病历.md</code> → 一个 <code>眼科/干眼症/</code> case 下的&quot;症状记录.md&quot;与&quot;用药-2026-05-23.md&quot;（或合为一文件两节）。</li>
+<li><strong>合并鼻科两文件</strong>：<code>鼻炎.md</code>（空壳）+ <code>鼻中隔偏曲.md</code> → 归入 <code>耳鼻喉科/</code> 下各自 case；鼻炎 case 保留&quot;待采集&quot;标记。</li>
+<li><strong>消除三轨结论</strong>：<code>健康问题总表.md</code> 的<strong>手写主题行全部改为 AUTO 派生</strong>（扩展 <code>生成问题总表.cjs</code> 覆盖&quot;主题结论&quot;段，不止&quot;检验摘要&quot;）；<code>data.js</code> 的 issues 只保留&quot;元信息+指向 case 的链接&quot;，数值/结论由 <code>/api/all</code> 或派生函数注入。</li>
+<li><strong>取消&quot;时间线&quot;手抄</strong>：<code>检查与就诊时间线.md</code>、<code>就诊记录待填清单.md</code> 改为<strong>从 <code>visit</code>+<code>reports</code>+<code>labs</code> 生成的视图</strong>；先把 7 条候选就诊真正录入 <code>visit</code> 表（<code>docs/tasks/010/012</code>）。</li>
+<li><strong>空壳模板统一</strong>：7 个空壳不再各自等于&quot;一个主题&quot;，合并进统一的 case 模板 + 科室目录，标&quot;待采集&quot;；完整度由脚本计算。</li>
+<li><strong>链接规范化</strong>：迁移到新目录后统一用构建脚本重写相对链接（复用 <code>迁移修正链接.py</code> 思路，但改为<strong>从配置生成</strong>而非手写映射）。</li>
+</ol>
+<hr>
+<h2>第三部分 · 按科室的&quot;病例(case)&quot;目录结构方案</h2>
+<h3>3.1 现状 → 目标映射</h3>
+<p>现有 9 个&quot;主题&quot; → 标准科室 case：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>现有主题</th>
+<th>标准科室</th>
+<th>case 标识建议</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>右脚踝</td>
+<td>骨科（足踝外科）</td>
+<td><code>orthopedics/right-ankle</code></td>
+<td>含 CT/MRI 影像分析、四次对照、复诊沟通</td>
+</tr>
+<tr>
+<td>眼睛（干眼/病历）</td>
+<td>眼科</td>
+<td><code>ophthalmology/dry-eye</code></td>
+<td>合并两份 md</td>
+</tr>
+<tr>
+<td>鼻子（鼻炎+鼻中隔偏曲）</td>
+<td>耳鼻喉科</td>
+<td><code>ent/rhinitis</code>、<code>ent/septum-deviation</code></td>
+<td>两 case 或一 case 两 problem</td>
+</tr>
+<tr>
+<td>牙齿</td>
+<td>口腔科</td>
+<td><code>stomatology/dental</code></td>
+<td>空壳</td>
+</tr>
+<tr>
+<td>甲沟炎</td>
+<td>皮肤科（或普外/手足）</td>
+<td><code>dermatology/paronychia</code></td>
+<td>空壳</td>
+</tr>
+<tr>
+<td>脚气</td>
+<td>皮肤科</td>
+<td><code>dermatology/tinea-pedis</code></td>
+<td>空壳</td>
+</tr>
+<tr>
+<td>脱发（雄脱）</td>
+<td>皮肤科</td>
+<td><code>dermatology/androgenetic-alopecia</code></td>
+<td>空壳</td>
+</tr>
+<tr>
+<td>尿频尿急尿不尽</td>
+<td>泌尿外科（或肾内科）</td>
+<td><code>urology/luts</code></td>
+<td>空壳</td>
+</tr>
+<tr>
+<td>肾功能（肝肾功能检查）</td>
+<td>肾内科</td>
+<td><code>nephrology/renal-function</code></td>
+<td>空壳+化验</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>说明：牙齿/甲沟炎/脚气/脱发/尿频 目前均空壳，可在建目录后标&quot;待采集&quot;，不阻塞。</p>
+</blockquote>
+<h3>3.2 建议目录结构</h3>
+<pre><code>private_data/
+├── cases/                              # 病例根（替代&quot;主题/&quot;，按科室聚合）
+│   ├── orthopedics/
+│   │   └── right-ankle/                # 右踝（骨科·足踝）
+│   │       ├── case.md                 # 病例首页：主诉/诊断/诱因/处置/复诊(原五段)+元数据(科室/医院/医生)
+│   │       ├── imaging/                # 影像解读（非原件）
+│   │       │   ├── ct-20251227.md
+│   │       │   ├── mri-20260224.md
+│   │       │   ├── mri-20260705.md
+│   │       │   ├── ct-20260819.md
+│   │       │   └── longitudinal-comparison.md   # 原&quot;四次检查对照分析&quot;
+│   │       └── visit-prep.md           # 原&quot;复诊沟通单&quot;
+│   ├── ophthalmology/
+│   │   └── dry-eye/
+│   │       ├── case.md
+│   │       ├── symptoms-20261022.md    # 原症状沟通记录
+│   │       └── meds-20260523.md        # 原病历.md
+│   ├── ent/
+│   │   ├── rhinitis/ case.md           # 空壳待采集
+│   │   └── septum-deviation/ case.md   # 原鼻中隔偏曲
+│   ├── stomatology/
+│   │   └── dental/ case.md             # 空壳
+│   ├── dermatology/
+│   │   ├── paronychia/ case.md         # 甲沟炎 空壳
+│   │   ├── tinea-pedis/ case.md        # 脚气 空壳
+│   │   └── androgenetic-alopecia/ case.md  # 雄脱 空壳
+│   ├── urology/
+│   │   └── luts/ case.md               # 尿频 空壳
+│   └── nephrology/
+│       └── renal-function/ case.md     # 肝功能/肾功能 空壳+化验
+│
+├── record/                             # 全档级（跨病例共享）
+│   ├── profile.md                      # 个人资料
+│   ├── visits-index.md                 # 就诊总览（改为 visit 表视图，不再手抄）
+│   ├── medications.md                  # 用药记录
+│   ├── problems-summary.md             # 健康问题总表（全部 AUTO 派生）
+│   └── labs/                           # 化验原文 txt 集中
+│       └── import-2026-*.txt
+│
+├── weight-loss/                         # 减重（独立领域，非&quot;病例&quot;）
+│   ├── plan.md / weekly-review.md / rules.md
+│   └── daily/ 2026-10.md
+│
+└── _meta/
+    ├── case-template.md                 # 统一病例模板（五段+科室元数据）
+    └── taxonomy.yaml                    # 科室↔case↔中文名↔源路径 映射配置（供脚本读取）
+</code></pre>
+<p><strong>关键设计点</strong></p>
+<ul>
+<li><strong>科室层（英文 slug）+ case 层</strong>：与 <code>app.core.js</code>、<code>data.js</code>、生成脚本解耦——它们<strong>只读 <code>taxonomy.yaml</code></strong>，不再硬编码中文主题名。</li>
+<li><strong>原件（影像 DICOM / 报告 jpg / 照片）仍留在 <code>data/</code></strong>（体积大、二进制），case 目录只放 <strong>md 解读与链接</strong>；后端 <code>ORIG_DIR</code> 改为&quot;按 <code>taxonomy.yaml</code> 挂多个原件根&quot;或统一迁到一个 <code>data/attachments/&lt;case-id&gt;/</code>，消除&quot;报告原件 vs 右脚踝/照片&quot;错位。</li>
+<li><strong><code>problem</code> 多病症同科</strong>：鼻中隔偏曲与鼻炎若视为同一患者同科两问题，可 <code>ent/&lt;patient-nose&gt;/case.md</code> 内分 <code>problems: [rhinitis, septum-deviation]</code>；简单起见先各成一 case。</li>
+</ul>
+<h3>3.3 落地步骤（可执行，分期）</h3>
+<p><strong>Step 0 · 备份与基线（P0 前置）</strong></p>
+<ol>
+<li><code>git add -A &amp;&amp; git commit</code>（<code>docs/tasks/002</code>）；<code>python server/health_server.py</code> 触发一次 <code>backup_db</code> 或手动 <code>sqlite3 .backup</code>，并把 <code>health.db</code> 复制到仓库外。</li>
+<li>停服务，确认 <code>health.db-wal/-shm</code> 已 checkpoint（否则复制库不完整）。</li>
+</ol>
+<p><strong>Step 1 · 建立映射配置（不改任何档案）</strong>
+3. 新建 <code>private_data/_meta/taxonomy.yaml</code>，把上表 9 主题 → 科室/case/中文名列全（含空壳的&quot;待采集&quot;标记）。
+4. 新建 <code>case-template.md</code>（五段 + 科室/医院/医生/关联 visit/reports 字段）。</p>
+<p><strong>Step 2 · 数据先入库，再谈目录（把 md 独有信息迁进 DB）</strong>
+5. 依 <code>就诊记录待填清单.md</code> 7 条候选，用应用&quot;登记就诊&quot;或脚本写入 <code>visit</code> 表（<code>docs/tasks/010/012</code>）——<strong>visit 表当前 0 行是最大双轨来源</strong>。
+6. <code>用药记录.md</code> → <code>medication</code> 表；确认 <code>allergy/family_history/surgery</code> 是否要补（<code>docs/tasks/005</code>）。</p>
+<p><strong>Step 3 · 用脚本搬迁目录（避免手移触发 ACL 冲突）</strong>
+7. 写一个<strong>一次性迁移脚本</strong>（仿 <code>迁移修正链接.py</code>，但读 <code>taxonomy.yaml</code> 而非硬编码）：<code>git mv</code> 每个主题文件到对应 case 路径，合并眼科/鼻科重复文件，删除 7 个空壳的独立副本改为 case 模板实例。
+8. 脚本自动重写 md 内相对链接（改用<strong>基于 taxonomy 的逻辑路径</strong>，不写死层级深度），并触发 <code>build-docs.cjs</code> 重生成 html、<code>检查文档链接.py</code> 验证 0 死链。</p>
+<p><strong>Step 4 · 解耦代码（让服务/前端读配置而非写死名字）</strong>
+9. 后端：<code>ORIG_DIR</code> 等改为读配置；缩窄静态托管范围（只托管 <code>assets/</code>、<code>js/</code>、<code>private_data/</code>，<strong>不再托管 <code>data/</code> 与 <code>server/</code></strong>）修 PHI 泄露+ACL；<code>init_db</code> 加轻量&quot;加列&quot;迁移。
+10. 前端：<code>data.js</code> 的 issues 改为&quot;只存 case 元信息 + 链接&quot;；数值/结论全部由 <code>/api/all</code> + <code>deriveLabIssue</code> 派生；<code>CATS/SYMPTOM_PARTS/PRIORITY</code> 改为从 taxonomy 读。
+11. 生成脚本：<code>生成主题档案.cjs:21-28</code>、<code>生成HTML档案.cjs:6</code>、<code>生成问题总表.cjs:11,124</code> 改为遍历 <code>taxonomy.yaml</code>。</p>
+<p><strong>Step 5 · 收尾与回归</strong>
+12. 跑 <code>build-docs.cjs</code> + <code>检查文档链接.py</code> + <code>e2e-*.js</code>（server/report/ocr/import）确认无回归。
+13. 补 P0 剩余项：<code>健康问题总表</code> 全 AUTO 派生、<code>visit/medication</code> 视图化时间线、<code>todo</code> 表填实（复诊待办不再只读）。
+14. 提交里程碑，写迁移说明到 <code>docs/HANDOFF.md</code>。</p>
+<h3>3.4 风险与注意（执行前必看）</h3>
+<ul>
+<li><strong>GUID/文件行号引用会失效</strong>：现有 md 里 <code>../../data/右脚踝/…</code>、<code>../主题/肾功能/…</code> 等硬链接迁移后全断，必须用脚本统一重写并跑 <code>检查文档链接.py</code>。</li>
+<li><strong>同名合并需人工确认</strong>：眼科两份、鼻科两份合并前，先确认时间/内容无冲突（本分析显示时间不同：05-23 用药 vs 10-22 症状，互补不冲突，可安全合并）。</li>
+<li><strong>空壳不是&quot;删&quot;而是&quot;实例化&quot;</strong>：7 个空壳保留为 case 模板实例（标待采集），不要直接删——否则丢失&quot;这些病存在但待补&quot;的信息。</li>
+<li><strong>ACL 冲突根因</strong>：宽托管整个 ROOT + 迁移时手移文件。<strong>用脚本（服务态或脚本态）而非人工资源管理器搬迁</strong>，且迁移前停服务。</li>
+<li><strong>一次只迁一层</strong>：先 <code>data/</code> 原件不动，只迁 <code>private_data/*.md</code> 结构；二进制原件目录后置，避免大范围权限触碰。</li>
+</ul>
+<hr>
+<h2>一句话总结</h2>
+<p>系统骨架完整，但<strong>同一事实写在 DB / data.js / md 三处，且三处都硬编码了中文主题名</strong>——这是&quot;结论过期 + 迁移困难 + ACL 冲突&quot;的共同病根。正确的破法是：<strong>先建 <code>taxonomy.yaml</code> 与患者级 <code>visit</code> 入库把单一事实源立起来，再用脚本按&quot;科室/case&quot;目录搬迁并让代码读配置而非写死名字</strong>，而不是逐个手工改名。</p>
+</main><footer>本地健康档案 · 请根据实际情况更新记录</footer></body></html>

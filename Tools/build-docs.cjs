@@ -23,12 +23,11 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { marked } = require('C:/Users/muyuys/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/marked');
 
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
 const CHECK = args.includes('--check');
-// --check 只列出将处理的文件，不需要渲染依赖；真正构建时才加载 marked。
-const { marked } = CHECK ? { marked: null } : require('./load-marked.cjs').loadMarked();
 const OUT = (args.find(a => a.startsWith('--out=')) || '').slice('--out='.length);
 const OUT_ROOT = OUT ? path.join(root, OUT) : root;
 const destOf = rel => path.join(OUT_ROOT, rel);
@@ -44,7 +43,7 @@ const CSS = loadCss();
 
 // --- 与既有生成脚本完全一致的 markdown 链接改写（F:\Health\ 绝对路径 / .md→.html）---
 let SRC_DIR = root;
-if (marked) marked.use({
+marked.use({
   walkTokens(t) {
     if ((t.type === 'link' || t.type === 'image') && t.href) {
       let h = t.href.replace(/^F:\/Health\//i, path.relative(SRC_DIR, root).replace(/\\/g, '/') + '/');
@@ -58,11 +57,6 @@ if (marked) marked.use({
 function render(rel) {
   const src = path.join(root, rel);
   const out = destOf(rel.replace(/\.md$/i, '.html'));
-  // 检查模式只确认源文件可读与输出路径，不解析 Markdown（无需 marked）。
-  if (CHECK) {
-    fs.accessSync(src, fs.constants.R_OK);
-    return out;
-  }
   SRC_DIR = path.dirname(src);
   const md = fs.readFileSync(src, 'utf8');
   const content = md.trim()
@@ -89,17 +83,38 @@ function render(rel) {
   return out;
 }
 
-// --- 遍历 docs 下的 .md，排除内部任务说明目录 ---
+// --- 遍历 docs 下的 .md，排除内部文档目录 / 文件 ---
+// docs/tasks/ 为内部任务说明，docs/产品缺口分析.md 为内部产品分析，均不对外渲染。
 const EXCLUDE_DIRS = ['docs/tasks'];
-const EXCLUDE_FILES = [];
+const EXCLUDE_FILES = ['docs/产品缺口分析.md'];
 function collectMd(dirRel) {
   const dir = path.join(root, dirRel);
+  if (!fs.existsSync(dir)) return [];
   const out = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const rel = dirRel ? dirRel + '/' + e.name : e.name;
     if (e.isDirectory()) {
       if (EXCLUDE_DIRS.includes(rel)) continue;
       out.push(...collectMd(rel));
+    } else if (e.name.toLowerCase().endsWith('.md')) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+// --- 遍历 private_data/ 下 .md（cases / record / weight-loss），排除 _meta/ ---
+// 归档结构：private_data/cases/<科室>/<case>/*.md、private_data/record/<name>/*.md、
+//           private_data/weight-loss/**/*.md。渲染为同名 .html 落在 md 同目录。
+function collectPrivateMd(dirRel) {
+  const dir = path.join(root, dirRel);
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = dirRel ? dirRel + '/' + e.name : e.name;
+    if (e.isDirectory()) {
+      if (e.name === '_meta' || e.name === '.trash') continue;
+      out.push(...collectPrivateMd(rel));
     } else if (e.name.toLowerCase().endsWith('.md')) {
       out.push(rel);
     }
@@ -151,14 +166,21 @@ function main() {
   // 2) 主题档案：补齐五段结构 + 计算档案完整度（幂等；不加 --init 不改动已有非空文件）
   runTool('Tools/生成主题档案.cjs', OUT ? ['--out=' + OUT] : []);
 
-  // 3) 全域渲染：README.md + docs 下全部 .md（排除内部文档），强制覆盖 .html
-  const targets = ['README.md', ...collectMd('docs').filter(rel => !EXCLUDE_FILES.includes(rel))];
-  console.log('\n=== 渲染 .html（共 ' + targets.length + ' 个）===');
+  // 3) 全域渲染：README.md + docs 下全部 .md（排除内部文档）+ private_data 下全部 .md
+  //    强制覆盖 .html（private_data 的 .html 已随旧目录删除，此处全部新建）
+  const docsTargets = collectMd('docs').filter(rel => !EXCLUDE_FILES.includes(rel));
+  const privateTargets = collectPrivateMd('private_data');
+  const targets = ['README.md', ...docsTargets, ...privateTargets];
+  console.log('\n=== 渲染 .html（共 ' + targets.length + ' 个，其中 private_data ' + privateTargets.length + ' 个）===');
   let wrote = 0;
   for (const rel of targets) {
     const out = render(rel);
     wrote++;
     if (CHECK) console.log('[check] ' + rel + ' -> ' + path.relative(root, out));
+  }
+  if (!CHECK) {
+    console.log('\nprivate_data 渲染清单：');
+    for (const rel of privateTargets) console.log('  ' + rel.replace(/\.md$/i, '.html'));
   }
   console.log('\n完成：处理 ' + wrote + ' 个 md' + (CHECK ? '（检查模式，未写盘）' : ' → 已重新生成 .html'));
 }

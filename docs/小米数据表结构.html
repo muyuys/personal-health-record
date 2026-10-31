@@ -1,0 +1,488 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小米数据表结构 · 个人健康档案</title><style>:root{color-scheme:light;--ink:#203831;--muted:#63746e;--accent:#276c59;--line:#dce7df}*{box-sizing:border-box}body{margin:0;background:#f3f7f2;color:var(--ink);font:16px/1.75 system-ui,'Microsoft YaHei',sans-serif}header{background:#163f34;color:#fff;padding:22px max(5vw,24px)}header a{color:#d8f1e5;text-decoration:none;font-weight:600}header span{display:block;font-size:12px;letter-spacing:.16em;color:#aed3c1}main{max-width:1050px;margin:32px auto;padding:36px 48px;background:white;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 35px #194f3010}h1{font-size:2em;line-height:1.3;margin:0 0 14px}h2{border-top:1px solid var(--line);padding-top:24px;margin-top:32px;font-size:1.4em}h3{margin-top:24px}a{color:var(--accent);overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:.93em}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#edf5ef} .table-wrap{overflow-x:auto}blockquote{margin:20px 0;padding:1px 18px;border-left:4px solid #91bda7;background:#f1f7f2;color:#415c4e}img{max-width:100%;height:auto}footer{max-width:1050px;margin:auto;padding:0 24px 32px;color:var(--muted);font-size:.85em}@media(max-width:600px){main{margin:12px;padding:24px 20px;border-radius:10px}header{padding:16px 20px}h1{font-size:1.65em}}@media print{body{background:white}main{box-shadow:none;border:0;margin:0;padding:0}header{background:white;color:black}header a{color:black}}</style></head><body><header><span>PERSONAL HEALTH RECORD</span><a href="../index.html">个人健康档案 / 首页</a></header><main><h1>小米健康数据导入 SQLite —— 表结构设计</h1>
+<blockquote>
+<p>数据源：<code>data/小米健康数据/</code>（两个导出包：<code>…mi_finess_eco_data_copy</code> 体脂秤 + <code>…MiFitness_c3_data_copy</code> 手环/健康中心）
+目标库：<code>data/health.db</code>
+导入脚本：<code>Tools/import_xiaomi.py</code>
+导入批次号：<code>xiaomi-20261029</code></p>
+</blockquote>
+<hr>
+<h2>一、设计原则</h2>
+<ol>
+<li><strong>不污染现有业务表</strong>：小米数据落入 <code>mi_</code> 前缀表；同时对<strong>体成分 → <code>weights</code>、睡眠 → <code>sleep_log</code></strong> 做同步写入，让前端页面无需改动即可展示。</li>
+<li><strong>原始保真</strong>：所有 <code>Value</code> 原始 JSON 全量存 <code>mi_raw_metric</code>，防字段丢失，可随时重新解析。</li>
+<li><strong>可重复导入（幂等）</strong>：每次导入先按 <code>batch</code> 删除再全量重灌，不 <code>DROP</code> 表、不破坏手工录入数据。</li>
+<li><strong>秒级时间戳统一</strong>：源数据 <code>Time</code>/<code>time</code> 多为 Unix 秒（部分自动识别毫秒），统一转 <code>INTEGER</code>（秒）+ <code>TEXT date</code>（YYYY-MM-DD）。</li>
+</ol>
+<hr>
+<h2>二、源文件与用途</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>源 CSV</th>
+<th>行数</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>…eco_scale_record.csv</code></td>
+<td>418</td>
+<td>体脂秤：41 列体成分明细</td>
+</tr>
+<tr>
+<td><code>…hlth_center_aggregated_fitness_data.csv</code></td>
+<td>14,314</td>
+<td>每日聚合：steps/calories/sleep/stand/intensity/goal</td>
+</tr>
+<tr>
+<td><code>…hlth_center_fitness_data.csv</code></td>
+<td>457,109</td>
+<td>原始秒级明细：steps/calories/sleep/心率等</td>
+</tr>
+<tr>
+<td><code>…user_member_profile.csv</code></td>
+<td>1</td>
+<td>成员资料：性别/生日/身高/体重</td>
+</tr>
+<tr>
+<td><code>…user_fitness_profile.csv</code></td>
+<td>1</td>
+<td>运动档案：最大心率/每日目标</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p>其余 30+ 个 CSV 为空或仅配置（饮食、路线、计划、隐私等），本次不入库。</p>
+</blockquote>
+<hr>
+<h2>三、表结构</h2>
+<h3>3.1 <code>mi_body_composition</code> —— 体成分（体脂秤）</h3>
+<p>来源 <code>eco_scale_record.csv</code>，<strong>418 行</strong>，时间范围 2024-03-04 ~ 2026-07-24。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>id</td>
+<td>INTEGER PK</td>
+<td>自增</td>
+</tr>
+<tr>
+<td>batch</td>
+<td>TEXT</td>
+<td>导入批次</td>
+</tr>
+<tr>
+<td>record_key</td>
+<td>TEXT</td>
+<td>`device_id</td>
+</tr>
+<tr>
+<td>device_id / device_model</td>
+<td>TEXT</td>
+<td>设备标识（yunmai.ms103）</td>
+</tr>
+<tr>
+<td>user_id</td>
+<td>TEXT</td>
+<td>用户 ID</td>
+</tr>
+<tr>
+<td>ts / date / time_str</td>
+<td>INTEGER/TEXT/TEXT</td>
+<td>秒级时间戳 / 日期 / HH:MM</td>
+</tr>
+<tr>
+<td>weight_kg</td>
+<td>REAL</td>
+<td>体重 kg</td>
+</tr>
+<tr>
+<td>bmi</td>
+<td>REAL</td>
+<td>BMI</td>
+</tr>
+<tr>
+<td>body_fat_pct</td>
+<td>REAL</td>
+<td>体脂率 %（源 <code>bfp</code>）</td>
+</tr>
+<tr>
+<td>muscle_pct</td>
+<td>REAL</td>
+<td>骨骼肌率 %（源 <code>slm</code>）</td>
+</tr>
+<tr>
+<td>muscle_kg</td>
+<td>REAL</td>
+<td>骨骼肌量 kg（源 <code>smm</code>）</td>
+</tr>
+<tr>
+<td>water_pct</td>
+<td>REAL</td>
+<td>体水分率 %（源 <code>bwp</code>）</td>
+</tr>
+<tr>
+<td>bone_kg</td>
+<td>REAL</td>
+<td>骨量 kg（源 <code>bmc</code>）</td>
+</tr>
+<tr>
+<td>protein_pct</td>
+<td>REAL</td>
+<td>蛋白质率 %（源 <code>pp</code>）</td>
+</tr>
+<tr>
+<td>visceral_fat</td>
+<td>REAL</td>
+<td>内脏脂肪等级（源 <code>vfl</code>）</td>
+</tr>
+<tr>
+<td>bmr</td>
+<td>REAL</td>
+<td>基础代谢 kcal（源 <code>bmr</code>）</td>
+</tr>
+<tr>
+<td>body_age</td>
+<td>REAL</td>
+<td>身体年龄（源 <code>ma</code>）</td>
+</tr>
+<tr>
+<td>body_score</td>
+<td>REAL</td>
+<td>身体得分（源 <code>bodyRes</code>，设备原始值）</td>
+</tr>
+<tr>
+<td>fat_mass_kg</td>
+<td>REAL</td>
+<td>脂肪量 kg（源 <code>bfm</code>）</td>
+</tr>
+<tr>
+<td>fat_free_kg</td>
+<td>REAL</td>
+<td>去脂体重 kg（源 <code>ffm</code>）</td>
+</tr>
+<tr>
+<td>muscle_mass_kg</td>
+<td>REAL</td>
+<td>蛋白质量（源 <code>pm</code>/<code>bwm</code>）</td>
+</tr>
+<tr>
+<td>water_kg</td>
+<td>REAL</td>
+<td>水分量 kg（源 <code>swt</code>）</td>
+</tr>
+<tr>
+<td>heart_rate</td>
+<td>REAL</td>
+<td>称重心率</td>
+</tr>
+<tr>
+<td>raw_json</td>
+<td>TEXT</td>
+<td>原始整行</td>
+</tr>
+</tbody></table></div>
+<blockquote>
+<p><strong>注意</strong>：部分记录为「不完整称重」（如只测体重、<code>bfp/bmi</code>=0），属源数据本身缺失，非导入问题。有完整体成分的记录约 87~272 条。</p>
+</blockquote>
+<h3>3.2 <code>mi_daily_activity</code> —— 每日活动汇总</h3>
+<p>来源聚合文件 <code>daily_report</code> 类，<strong>1,298 天</strong>，2022-06-01 ~ 2026-10-29。主键 <code>(batch, date)</code>。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>batch / date</td>
+<td>TEXT</td>
+<td>主键</td>
+</tr>
+<tr>
+<td>ts</td>
+<td>INTEGER</td>
+<td>当日时间戳</td>
+</tr>
+<tr>
+<td>steps</td>
+<td>INTEGER</td>
+<td>步数（日均约 5,273，最高 34,556）</td>
+</tr>
+<tr>
+<td>distance_m</td>
+<td>REAL</td>
+<td>距离 米</td>
+</tr>
+<tr>
+<td>calories</td>
+<td>REAL</td>
+<td>步数附带的消耗</td>
+</tr>
+<tr>
+<td>active_cal</td>
+<td>REAL</td>
+<td>活动热量</td>
+</tr>
+<tr>
+<td>stand_count</td>
+<td>INTEGER</td>
+<td>有效站立次数</td>
+</tr>
+<tr>
+<td>intensity_min</td>
+<td>INTEGER</td>
+<td>中高强度分钟</td>
+</tr>
+<tr>
+<td>goal_cal / goal_steps / goal_stand</td>
+<td>REAL/INT</td>
+<td>当日目标（源常缺）</td>
+</tr>
+<tr>
+<td>payload_json</td>
+<td>TEXT</td>
+<td>当日各 Key 的原始 Value 汇总</td>
+</tr>
+</tbody></table></div>
+<h3>3.3 <code>mi_sleep</code> —— 睡眠（夜间主睡眠）</h3>
+<p>来源聚合 + 原始明细合并，<strong>1,156 晚</strong>，2022-06-01 ~ 2026-10-28。主键 <code>(batch, date)</code>（归属日=起床日，同日取时长最长的一条）。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>batch / date</td>
+<td>TEXT</td>
+<td>主键</td>
+</tr>
+<tr>
+<td>bedtime_ts / wake_ts</td>
+<td>INTEGER</td>
+<td>入睡/起床时间戳</td>
+</tr>
+<tr>
+<td>bedtime / wake</td>
+<td>TEXT</td>
+<td>HH:MM（从 segment_details 提取）</td>
+</tr>
+<tr>
+<td>total_min</td>
+<td>REAL</td>
+<td>总睡眠分钟</td>
+</tr>
+<tr>
+<td>deep_min / light_min / rem_min / awake_min</td>
+<td>REAL</td>
+<td>各阶段分钟</td>
+</tr>
+<tr>
+<td>score</td>
+<td>INTEGER</td>
+<td>睡眠得分</td>
+</tr>
+<tr>
+<td>avg_hr</td>
+<td>REAL</td>
+<td>平均心率</td>
+</tr>
+<tr>
+<td>snore_min</td>
+<td>REAL</td>
+<td>打鼾时长</td>
+</tr>
+<tr>
+<td>segments_json</td>
+<td>TEXT</td>
+<td>睡眠分期原始片段</td>
+</tr>
+</tbody></table></div>
+<h3>3.4 <code>mi_heart_rate</code> —— 心率散点</h3>
+<p>来源原始明细 <code>single_heart_rate</code>/<code>dynamic</code>，<strong>6 条</strong>（该导出心率点极少）。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>id / batch</td>
+<td>INTEGER/TEXT</td>
+<td>自增 / 批次</td>
+</tr>
+<tr>
+<td>ts / date / time_str</td>
+<td>INTEGER/TEXT/TEXT</td>
+<td>时间</td>
+</tr>
+<tr>
+<td>bpm</td>
+<td>REAL</td>
+<td>心率</td>
+</tr>
+<tr>
+<td>kind</td>
+<td>TEXT</td>
+<td>来源类型（single_heart_rate/dynamic）</td>
+</tr>
+</tbody></table></div>
+<h3>3.5 <code>mi_raw_metric</code> —— 原始指标全量</h3>
+<p><strong>14,473 条</strong>，保存聚合文件全部 Key + 原始文件的少量特殊 Key（心率类）。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>id / batch</td>
+<td>INTEGER/TEXT</td>
+<td>自增 / 批次</td>
+</tr>
+<tr>
+<td>key</td>
+<td>TEXT</td>
+<td>指标名（steps/sleep/calories/valid_stand/intensity/goal/headset/weight/heart_rate/single_heart_rate/dynamic）</td>
+</tr>
+<tr>
+<td>tag</td>
+<td>TEXT</td>
+<td>分组（daily_report/daily_mark/daily_fitness）</td>
+</tr>
+<tr>
+<td>sid / ts / date</td>
+<td>TEXT/INT/TEXT</td>
+<td>会话 / 时间</td>
+</tr>
+<tr>
+<td>value_json</td>
+<td>TEXT</td>
+<td>原始 JSON</td>
+</tr>
+<tr>
+<td>update_time</td>
+<td>INTEGER</td>
+<td>更新时刻</td>
+</tr>
+</tbody></table></div>
+<h3>3.6 <code>mi_profile</code> —— 个人资料快照</h3>
+<p><strong>1 行</strong>。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>列</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>batch (PK) / uid / name / sex</td>
+<td>批次 / 用户 / 性别</td>
+</tr>
+<tr>
+<td>birth / height_cm / weight_kg / region</td>
+<td>生日 / 身高 / 体重 / 地区</td>
+</tr>
+<tr>
+<td>max_hr / daily_cal_goal / daily_step_goal / daily_sleep_goal_min</td>
+<td>最大心率 / 每日目标</td>
+</tr>
+<tr>
+<td>raw_json</td>
+<td>原始档案</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>四、与业务表的同步</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>小米表</th>
+<th>→ 业务表</th>
+<th>规则</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>mi_body_composition</code></td>
+<td><code>weights</code></td>
+<td>每条形如 <code>id=xiaomi-20261029-bc-&lt;ts&gt;</code>，写入 kg/body_fat/muscle/bmi/visceral_fat/bmr/bone，tag=<code>device</code>。<strong>不动手工录入的 weights 行。</strong></td>
+</tr>
+<tr>
+<td><code>mi_sleep</code></td>
+<td><code>sleep_log</code></td>
+<td>每夜形如 <code>id=xiaomi-20261029-sl-&lt;date&gt;</code>，写入 hours/minutes/score/bedtime/wake，source=<code>xiaomi</code>。</td>
+</tr>
+</tbody></table></div>
+<p>前端 <code>GET /api/all</code> 的 <code>weights</code> 和 <code>sleepLogs</code> 字段即自动包含这些数据，页面无需改动。</p>
+<hr>
+<h2>五、导入结果（2026-11-01 实跑）</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>表</th>
+<th>行数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>mi_body_composition</code></td>
+<td>418</td>
+</tr>
+<tr>
+<td><code>mi_daily_activity</code></td>
+<td>1,298</td>
+</tr>
+<tr>
+<td><code>mi_sleep</code></td>
+<td>1,156</td>
+</tr>
+<tr>
+<td><code>mi_heart_rate</code></td>
+<td>6</td>
+</tr>
+<tr>
+<td><code>mi_raw_metric</code></td>
+<td>14,473</td>
+</tr>
+<tr>
+<td><code>mi_profile</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td>→ <code>weights</code>（含 device 418 + 手工 2）</td>
+<td>420</td>
+</tr>
+<tr>
+<td>→ <code>sleep_log</code></td>
+<td>1,156</td>
+</tr>
+</tbody></table></div>
+<p>导入前已备份：<code>data/backups/health-before-xiaomi-import-*.db</code>。</p>
+<hr>
+<h2>六、重复导入 / 用法</h2>
+<pre><code class="language-bash"># 语法检查后执行（幂等，可反复跑）
+server\.venv\Scripts\python.exe Tools\import_xiaomi.py
+
+# 只看统计不写库
+server\.venv\Scripts\python.exe Tools\import_xiaomi.py --dry-run
+</code></pre>
+<p>重新导入时按 <code>batch=xiaomi-20261029</code> 删除旧记录后重灌，<code>weights</code>/<code>sleep_log</code> 中以 <code>xiaomi-20261029-</code> 前缀的记录会同步刷新，<strong>手工数据不受影响</strong>。</p>
+<hr>
+<h2>七、局限与后续可选</h2>
+<ul>
+<li><code>intensity_min</code>（中高强度分钟）在聚合数据里绝大多数为空，源数据本身稀疏。</li>
+<li>心率仅 6 个散点，无法做心率曲线；如需可在后续解析 <code>fitness_data.csv</code> 的 <code>dynamic</code> 血流/心率序列。</li>
+<li>饮食、运动路线、训练计划等 CSV 为空，未入库；若日后有数据可扩展 <code>mi_diet</code>、<code>mi_workout</code> 表。</li>
+<li><code>body_score</code> 存的是设备 <code>bodyRes</code> 原始值（非 0-100），如需归一可再映射。</li>
+</ul>
+</main><footer>本地健康档案 · 请根据实际情况更新记录</footer></body></html>

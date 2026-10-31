@@ -1,0 +1,128 @@
+version: 1
+
+# 科室 / case 映射配置
+# slug 使用英文分层，name_zh 维护中文显示名。
+# source / merge_sources 均基于 private_data/ 下的真实路径。
+
+departments:
+  - slug: orthopedics
+    name_zh: 骨科
+    cases:
+      - slug: right-ankle
+        name_zh: 右踝
+        source: 主题/右脚踝
+        status: active
+        notes: 含CT/MRI影像分析、四次对照、复诊沟通
+        # 真实文件：
+        #   主题/右脚踝/ct_analysis/右踝CT辅助分析.md (+ .html)
+        #   主题/右脚踝/longitudinal_analysis/右踝四次检查对照分析.md (+ .html)
+        #   主题/右脚踝/longitudinal_analysis/右踝复诊沟通单.md (+ .html)
+        report_refs:
+          - 主题/右脚踝/ct_analysis/右踝CT辅助分析.md
+          - 主题/右脚踝/longitudinal_analysis/右踝四次检查对照分析.md
+          - 主题/右脚踝/longitudinal_analysis/右踝复诊沟通单.md
+
+  - slug: ophthalmology
+    name_zh: 眼科
+    cases:
+      - slug: dry-eye
+        name_zh: 干眼
+        source: 主题/眼睛
+        status: active
+        merge_sources:
+          - 主题/眼睛/2026-10-22_干眼与视觉症状沟通记录.md
+          - 主题/眼睛/病历.md
+
+  - slug: ent
+    name_zh: 耳鼻喉科
+    cases:
+      - slug: rhinitis
+        name_zh: 鼻炎
+        source: 主题/鼻子/鼻炎.md
+        status: pending_collection
+        merge_sources:
+          - 主题/鼻子/鼻炎.md
+      - slug: septum-deviation
+        name_zh: 鼻中隔偏曲
+        source: 主题/鼻子/鼻中隔偏曲.md
+        status: active
+        merge_sources:
+          - 主题/鼻子/鼻中隔偏曲.md
+
+  - slug: stomatology
+    name_zh: 口腔科
+    cases:
+      - slug: dental
+        name_zh: 牙齿
+        source: 主题/牙齿
+        status: pending_collection
+        merge_sources:
+          - 主题/牙齿/牙齿.md
+
+  - slug: dermatology
+    name_zh: 皮肤科
+    cases:
+      - slug: paronychia
+        name_zh: 甲沟炎
+        source: 主题/甲沟炎
+        status: pending_collection
+        merge_sources:
+          - 主题/甲沟炎/甲沟炎.md
+      - slug: tinea-pedis
+        name_zh: 脚气
+        source: 主题/脚气
+        status: pending_collection
+        merge_sources:
+          - 主题/脚气/脚气.md
+      - slug: androgenetic-alopecia
+        name_zh: 脱发
+        source: 主题/脱发
+        status: pending_collection
+        # 真实文件为 雄脱.md（雄激素性脱发）
+        merge_sources:
+          - 主题/脱发/雄脱.md
+
+  - slug: urology
+    name_zh: 泌尿外科
+    cases:
+      - slug: luts
+        name_zh: 尿频尿急尿不尽
+        source: 主题/尿频尿急尿不尽
+        status: pending_collection
+        merge_sources:
+          - 主题/尿频尿急尿不尽/尿频尿急尿不尽.md
+
+  - slug: nephrology
+    name_zh: 肾内科
+    cases:
+      - slug: renal-function
+        name_zh: 肝肾功能
+        source: 主题/肾功能
+        status: pending_collection
+        # 真实文件为 肝肾功能检查.md
+        merge_sources:
+          - 主题/肾功能/肝肾功能检查.md
+
+record:
+  - { slug: profile, name_zh: 个人资料, source: 健康档案/个人资料.md, exists: true }
+  - { slug: visits-index, name_zh: 检查与就诊时间线, source: 健康档案/检查与就诊时间线.md, exists: true }
+  - { slug: medications, name_zh: 用药记录, source: 健康档案/用药记录.md, exists: true }
+  - { slug: problems-summary, name_zh: 健康问题总表, source: 健康档案/健康问题总表.md, exists: true }
+  - { slug: follow-ups, name_zh: 复诊与待办, source: 健康档案/复诊与待办.md, exists: true }
+  - { slug: visit-checklist, name_zh: 就诊记录待填清单, source: 健康档案/就诊记录待填清单.md, exists: true }
+  - { slug: visit-template, name_zh: 就诊记录模板, source: 健康档案/就诊记录模板.md, exists: true }
+  - { slug: labs-trend, name_zh: 检验趋势, source: 健康档案/检验趋势.html, exists: true, assets: [健康档案/检验趋势.css, 健康档案/检验趋势.js] }
+  - slug: labs
+    name_zh: 检验导入
+    status: active
+    # 化验转写稿(txt)存放于 record/labs/，文件名与就诊信息不纳入版本库
+
+weight_loss:
+  source: 减重记录
+  name_zh: 减重记录
+  files:
+    - 减重记录/README.md
+    - 减重记录/每周复盘.md
+    - 减重记录/热量估算规则.md
+    - 减重记录/目标与计划.md
+  daily_dir: 减重记录/每日记录

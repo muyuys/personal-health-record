@@ -1,7 +1,36 @@
 /* ======================= 派生数据 ======================= */
-/* 纯领域规则集中在 HealthDomain；这里保留经典脚本迁移期的兼容别名。 */
-const { labKey, labRange, labValueRaw, calcLabFlag, qualFlagOf, isAbnormal } = HealthDomain;
+function labKey(r) { return JSON.stringify([r.category, r.name.trim(), r.unit.trim()]); }
+function labRange(r) {
+  if (r.low === null && r.high === null) return '未填写';
+  return `${r.low === null ? '—' : r.low} – ${r.high === null ? '—' : r.high}`;
+}
+/* 定性结果没有数值：value 为 null，结果看 qualitative 文本；异常用统一 flag(H/L/N) 表达 */
+function labValueRaw(r) {
+  if (r && r.value !== null && r.value !== undefined && Number.isFinite(r.value)) return r.value;
+  return r ? (r.qualitative || '') : '';
+}
 function labValueText(r) { return esc(labValueRaw(r)); }
+function calcLabFlag(value, low, high) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '';
+  if (high !== null && high !== undefined && value > high) return 'H';
+  if (low !== null && low !== undefined && value < low) return 'L';
+  if ((low !== null && low !== undefined) || (high !== null && high !== undefined)) return 'N';
+  return '';
+}
+function qualFlagOf(q) {
+  const s = String(q || '').trim();
+  if (!s) return '';
+  if (/^(阴性|未见异常|正常|未检出)$/.test(s)) return 'N';
+  if (/^(阳性|弱阳性|异常|可疑|±|\+\-|\+−|\+{1,4})$/.test(s)) return 'H';
+  return '';
+}
+function isAbnormal(r) {
+  if (!r) return false;
+  if (r.flag === 'H' || r.flag === 'L') return true;   // 已给出的统一标志优先（含定性、报告箭头）
+  if (typeof r.value !== 'number' || !Number.isFinite(r.value)) return false;
+  return (r.low !== null && r.low !== undefined && r.value < r.low)
+    || (r.high !== null && r.high !== undefined && r.value > r.high);
+}
 /* 表格里的「提示」列：单独一列表达是否超出参考范围，不挤在数值旁 */
 function labFlagCell(r) {
   if (r.qualitative && !(typeof r.value === 'number' && Number.isFinite(r.value))) {
@@ -136,16 +165,13 @@ function baselineInfo() {
   return { ok: false, kg: null, days: s.length, need: 7 - s.length };
 }
 function progressPct() {
-  const cur = latestWeight();
+  const cur = latestWeight().kg;
   const { start, target } = ARCHIVE.weight;
-  if (!cur || !Number.isFinite(start) || !Number.isFinite(target) || start <= target) return null;
-  return Math.min(100, Math.max(0, (start - cur.kg) / (start - target) * 100));
+  return Math.min(100, Math.max(0, (start - cur) / (start - target) * 100));
 }
 function bmiNow() {
-  const cur = latestWeight();
-  const h = Number(ARCHIVE.profile.height);
-  if (!cur || !Number.isFinite(h) || h <= 0) return null;
-  return cur.kg / Math.pow(h / 100, 2);
+  const kg = latestWeight().kg;
+  return kg / Math.pow(ARCHIVE.profile.height / 100, 2);
 }
 function waistRecord() {
   return weightList().slice().reverse().find(x => Number.isFinite(x.waist) && x.waist > 0) || null;
@@ -176,7 +202,7 @@ function profileFields() {
     return f;
   });
 }
-/* 个人资料必填清单（10 项）。
+/* 个人资料必填清单（10 项，来自产品缺口分析 P0/P1）。
    每项映射到 profileFields() 里的一个字段；ok 决定「已填 / 待填」。
    过敏 / 手术住院 / 家族史 / 当前用药复用任务 005/010 的结构化表，不另建表。 */
 const PROFILE_REQUIRED = [
@@ -213,7 +239,7 @@ const REMIND_SOON_DAYS = 7;
 function localExportStatus() {
   let last = null;
   try {
-    const raw = storage.readText(LS_LAST_EXPORT);
+    const raw = localStorage.getItem(LS_LAST_EXPORT);
     last = raw ? parseInt(raw, 10) : null;
   } catch (e) { last = null; }
   if (last === null || !Number.isFinite(last)) last = null;
@@ -247,7 +273,7 @@ function firstISODate(text) {
 function todoDue(t) { return normISODate(t && t.dueDate) || firstISODate(t && t.meta); }
 
 function reminderDismissMap() {
-  try { return JSON.parse(storage.readText(LS_REMIND_DISMISS) || '{}') || {}; }
+  try { return JSON.parse(localStorage.getItem(LS_REMIND_DISMISS) || '{}') || {}; }
   catch (e) { return {}; }
 }
 function isReminderDismissed(key) { return reminderDismissMap()[key] === todayISO(); }
@@ -255,7 +281,7 @@ function dismissReminder(key) {
   const m = reminderDismissMap();
   if (key) m[key] = todayISO();
   else visibleReminders().forEach(r => { m[r.key] = todayISO(); });
-  try { storage.writeText(LS_REMIND_DISMISS, JSON.stringify(m)); } catch (e) { }
+  try { localStorage.setItem(LS_REMIND_DISMISS, JSON.stringify(m)); } catch (e) { }
   refreshReminders();
 }
 function buildReminders() {
@@ -331,7 +357,7 @@ function refreshReminders() {
 function markExported() {
   const now = Math.floor(Date.now() / 1000);
   exportStatus = { lastExportAt: now, daysSince: 0, due: false };
-  try { storage.writeText(LS_LAST_EXPORT, String(now)); } catch (e) { }
+  try { localStorage.setItem(LS_LAST_EXPORT, String(now)); } catch (e) { }
   refreshReminders();
 }
 
@@ -345,15 +371,18 @@ function completeness() {
   const okP = pf.filter(f => f.ok).length;
   const iss = ARCHIVE.issues;
   const okI = iss.filter(i => !['pending', 'stub'].includes(i.status)).length;
-  const pct = Math.round(
-    ((pf.length ? okP / pf.length * 0.4 : 0)
-      + (iss.length ? okI / iss.length * 0.4 : 0)
-      + (labs.length ? 0.2 : 0)) * 100
-  );
+  const pct = Math.round((okP / pf.length * 0.4 + okI / iss.length * 0.4 + (labs.length ? 0.2 : 0)) * 100);
   const missAll = [
     ...pf.filter(f => !f.ok).map(f => SHORT[f.k] || f.k),
     ...iss.filter(i => ['pending', 'stub'].includes(i.status)).map(i => i.name)
   ];
+  const PRIORITY = ['过敏史', '腰围', '睡眠与作息', '肝肾功能', '鼻炎', '脱发', '牙齿 · 甲沟炎 · 脚气', '尿频尿急尿不尽'];
+  missAll.sort((a, b) => {
+    const ia = PRIORITY.indexOf(a), ib = PRIORITY.indexOf(b);
+    const wa = a === '姓名' ? 999 : (ia < 0 ? 500 : ia);
+    const wb = b === '姓名' ? 999 : (ib < 0 ? 500 : ib);
+    return wa - wb;
+  });
   const missing = missAll.slice(0, 5);
   return { pct, missing, okP, okI, totalP: pf.length, totalI: iss.length };
 }

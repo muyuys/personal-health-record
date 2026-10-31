@@ -1,15 +1,8 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const ROOT = path.join(__dirname, '..');
-const OUT = path.join(os.tmpdir(), 'health-e2e-report') + path.sep;
-// 隐私原则：e2e 不读个人报告原件与转写稿，测试图与文本在临时目录合成。
-const IMG = path.join(OUT, 'sample-report.jpg');
-const TXT = `2026-09-04
-项目\t结果\t单位\t参考区间
-肌酐\t92\tμmol/L\t57--97
-尿酸\t380\tμmol/L\t208--428`;
+const OUT = 'C:/Users/muyuys/AppData/Local/Temp/';
+const IMG = 'F:/Health/data/报告原件/2026-09-04-同仁医院-肝肾常规.jpg';
+const TXT = fs.readFileSync('F:/Health/docs/健康档案/导入-2026-09-04-同仁医院-肝肾常规.txt', 'utf8');
 
 let pass = 0, fail = 0;
 const check = (c, label, extra) => {
@@ -18,19 +11,13 @@ const check = (c, label, extra) => {
 };
 
 (async () => {
-  fs.mkdirSync(path.dirname(IMG), { recursive: true });
-  const png = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-    'base64');
-  fs.writeFileSync(IMG, png);
   const browser = await chromium.launch({ channel: 'chrome' });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
 
-  const PAGE_URL = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') + '?offline=1#/labs';
-  await page.goto(PAGE_URL);
+  await page.goto('file:///F:/Health/index.html?offline=1#/labs');
   await page.waitForTimeout(500);
 
   /* 1. 空状态 */

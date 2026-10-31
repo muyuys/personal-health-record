@@ -148,20 +148,6 @@ def group_lines(items):
     return out
 
 
-def status():
-    """给组合服务使用的公开只读状态，避免跨模块读取私有全局变量。"""
-    return {
-        "engine": "rapidocr" if _api == 2 else ("rapidocr_onnxruntime" if _api == 1 else ""),
-        "ready": _engine is not None,
-        "error": _engine_error,
-    }
-
-
-def recognize_lines(data):
-    """图片字节 → OCR 行；医疗字段解析仍只在前端人工确认后进行。"""
-    return group_lines(recognize(data))
-
-
 # ---------------------------------------------------------------- HTTP
 
 class Handler(BaseHTTPRequestHandler):

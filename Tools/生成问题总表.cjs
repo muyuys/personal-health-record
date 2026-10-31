@@ -4,11 +4,12 @@
 // 用法：node Tools/生成问题总表.cjs
 const fs = require('fs'), path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { marked } = require('./load-marked.cjs').loadMarked();
+const { marked } = require('C:/Users/muyuys/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/marked');
 
 const root = path.resolve(__dirname, '..');
 const dbPath = path.join(root, 'data', 'health.db');
-const mdPath = path.join(root, 'docs', '健康档案', '健康问题总表.md');
+// 新归档结构：总表位于 private_data/record/problems-summary/
+const mdPath = path.join(root, 'private_data', 'record', 'problems-summary', '健康问题总表.md');
 const htmlPath = mdPath.replace(/\.md$/i, '.html');
 // 可选：SCQ_OUT=<目录> 时把结果写到该目录（用于沙箱内 dry-run / 预览，默认写回 docs）。
 const OUT = process.env.SCQ_OUT || '';
@@ -121,7 +122,7 @@ function main() {
   for (let i = 0; i < lines.length; i++) {
     if (/^\|\s*肝肾功能\s*\|/.test(lines[i])) {
       const cells = lines[i].split('|');
-      const src = (cells[5] || '').trim() || '[原文件](../主题/肾功能/肝肾功能检查.md)';
+      const src = (cells[5] || '').trim() || '[原文件](../../cases/nephrology/renal-function/肝肾功能检查.md)';
       lines[i] = `| 肝肾功能 | ${cell.conclusion} | ${cell.date} | ${cell.need} | ${src} |`;
       replaced = true;
       break;

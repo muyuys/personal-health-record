@@ -1,0 +1,391 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HANDOFF · 个人健康档案</title><style>:root{color-scheme:light;--ink:#203831;--muted:#63746e;--accent:#276c59;--line:#dce7df}*{box-sizing:border-box}body{margin:0;background:#f3f7f2;color:var(--ink);font:16px/1.75 system-ui,'Microsoft YaHei',sans-serif}header{background:#163f34;color:#fff;padding:22px max(5vw,24px)}header a{color:#d8f1e5;text-decoration:none;font-weight:600}header span{display:block;font-size:12px;letter-spacing:.16em;color:#aed3c1}main{max-width:1050px;margin:32px auto;padding:36px 48px;background:white;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 35px #194f3010}h1{font-size:2em;line-height:1.3;margin:0 0 14px}h2{border-top:1px solid var(--line);padding-top:24px;margin-top:32px;font-size:1.4em}h3{margin-top:24px}a{color:var(--accent);overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:.93em}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#edf5ef} .table-wrap{overflow-x:auto}blockquote{margin:20px 0;padding:1px 18px;border-left:4px solid #91bda7;background:#f1f7f2;color:#415c4e}img{max-width:100%;height:auto}footer{max-width:1050px;margin:auto;padding:0 24px 32px;color:var(--muted);font-size:.85em}@media(max-width:600px){main{margin:12px;padding:24px 20px;border-radius:10px}header{padding:16px 20px}h1{font-size:1.65em}}@media print{body{background:white}main{box-shadow:none;border:0;margin:0;padding:0}header{background:white;color:black}header a{color:black}}</style></head><body><header><span>PERSONAL HEALTH RECORD</span><a href="../index.html">个人健康档案 / 首页</a></header><main><h1>交接说明（HANDOFF）</h1>
+<blockquote>
+<p>写于 2026-10-31。给<strong>接手维护的人</strong>（或下一个接手的 AI 助手）看。
+只想会用这个档案，看 <a href="%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97.html">使用指南.md</a>；只想了解里面有什么，看 <a href="../README.html">README.md</a>。
+本文不含任何个人健康内容——按项目约定，说明性文档不写指标、诊断、机构、就诊日期。</p>
+</blockquote>
+<hr>
+<h2>1. 一句话现状</h2>
+<p>一个<strong>能用的</strong>单机个人健康档案：双击 <code>启动健康档案.bat</code> 打开页面，数据写到本机 SQLite，报告原件存成真实文件，五套回归测试全绿。</p>
+<p>但有一件事没做：<strong>代码还没提交</strong>。仓库只有一次初始提交，之后的目录迁移、SQLite 化、围度、全部记录页，全都躺在工作区里。</p>
+<hr>
+<h2>2. 现状速览</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>项目</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>服务</td>
+<td><code>http://127.0.0.1:8765/</code>，只 bind 本机，不对外</td>
+</tr>
+<tr>
+<td>数据库</td>
+<td><code>data/health.db</code>（SQLite + WAL，当时约 72 KB）</td>
+</tr>
+<tr>
+<td>报告原件</td>
+<td><code>data/报告原件/files/</code>，5 个文件，约 430 KB</td>
+</tr>
+<tr>
+<td>库内记录</td>
+<td>数十条检验结果、5 份报告、少量体重与围度记录</td>
+</tr>
+<tr>
+<td>回归测试</td>
+<td>75 / 26 / 32 / 19 / 21，全部通过</td>
+</tr>
+<tr>
+<td>文档断链</td>
+<td>0 处</td>
+</tr>
+<tr>
+<td>Git</td>
+<td><code>main</code> 分支，<strong>1 次提交，40 项改动未提交</strong> ⚠️</td>
+</tr>
+<tr>
+<td>依赖环境</td>
+<td><code>server/.venv</code>（Python），已装 rapidocr + onnxruntime</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>3. 架构：为什么是三个东西</h2>
+<pre><code>浏览器 ── 静态资源 ──┐
+   │                  │
+   └─ JSON API ──► server/health_server.py ──► data/health.db
+                        │                      data/报告原件/files/*.jpg
+                        └─ POST /ocr ──► server/ocr_server.py（RapidOCR）
+</code></pre>
+<ol>
+<li><strong>前端是纯静态单页</strong>：<code>index.html</code> + <code>assets/</code>，没有构建步骤、没有 npm 依赖、没有 CDN。双击 <code>index.html</code> 也能打开（会降级，见下）。</li>
+<li><strong>本机服务是唯一的写入通道</strong>：Python 标准库 <code>http.server</code>，同时干三件事——静态托管整个 <code>F:/Health</code>、提供 JSON API、转发识别请求。不用 Flask，就是为了&quot;装个 Python 就能跑&quot;。</li>
+<li><strong>SQLite 是唯一的真相</strong>：<code>data/health.db</code>。图片不进库，落盘存文件名。</li>
+</ol>
+<p><strong>降级行为</strong>：服务没起时前端退回 <code>localStorage</code>（侧栏显示红点「浏览器存储模式」）。这是应急，不是备用方案——两套数据不互通，连上服务后要在个人资料页点「合并浏览器数据」并进库里。</p>
+<p><strong>关键约束：不双写。</strong> <code>storeMode</code> 是 <code>server</code> 或 <code>local</code>，二选一。任何时刻只有一份真相。</p>
+<hr>
+<h2>4. 怎么跑起来</h2>
+<h3>首次（只需一次）</h3>
+<p>双击 <code>server/安装依赖.bat</code>：建 <code>server/.venv</code>，装 <code>rapidocr</code> + <code>onnxruntime</code>。
+装依赖必须走 pypi 官方源（脚本里已写死 <code>-i https://pypi.org/simple</code>）——本机 pip 全局配了清华源，清华没有 <code>rapidocr</code>。</p>
+<h3>日常</h3>
+<p>双击根目录 <code>启动健康档案.bat</code>：起服务 → 等 3 秒 → 开浏览器。关掉那个黑窗口服务就停。</p>
+<h3>手动（调试时用）</h3>
+<pre><code class="language-bash">cd F:/Health/server &amp;&amp; .venv/Scripts/python.exe health_server.py
+# 自定义端口 / 数据目录（测试用，绝不碰真库）
+.venv/Scripts/python.exe health_server.py -p 8799 -d &lt;临时目录&gt;
+</code></pre>
+<h3>只开页面（无服务）</h3>
+<p>直接双击 <code>index.html</code> → 降级到浏览器存储，侧栏红点。
+<code>?offline=1</code> 强制降级，自动化测试靠它避免把测试数据写进真库。</p>
+<hr>
+<h2>5. 代码地图</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>文件</th>
+<th>行数</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>index.html</code></td>
+<td>73</td>
+<td>应用外壳：侧栏骨架、弹层容器、脚本引入</td>
+</tr>
+<tr>
+<td><code>assets/app.js</code></td>
+<td>3068</td>
+<td>路由、九个视图的渲染、表单、图表、导入导出、存储层</td>
+</tr>
+<tr>
+<td><code>assets/parse.js</code></td>
+<td>564</td>
+<td>报告文本 → 结构化记录。<strong>纯函数</strong>，可 <code>node require</code></td>
+</tr>
+<tr>
+<td><code>assets/data.js</code></td>
+<td>269</td>
+<td>只读档案内容（<code>docs/</code> Markdown 的结构化摘要）</td>
+</tr>
+<tr>
+<td><code>assets/styles.css</code></td>
+<td>852</td>
+<td>全部样式，含响应式与打印</td>
+</tr>
+<tr>
+<td><code>server/health_server.py</code></td>
+<td>449</td>
+<td>静态托管 + JSON API + OCR 转发</td>
+</tr>
+<tr>
+<td><code>server/ocr_server.py</code></td>
+<td>266</td>
+<td>识别逻辑（<code>load_engine</code> / <code>recognize</code> / <code>group_lines</code>）</td>
+</tr>
+</tbody></table></div>
+<p><code>app.js</code> 是单文件，3000 行已经偏大。<strong>如果要拆分，先拆存储层和渲染层</strong>（<code>persistLabs</code> / <code>bootStore</code> / <code>render*</code>），别按页面拆——页面之间共享的辅助函数太多。</p>
+<hr>
+<h2>6. 数据模型与接口</h2>
+<h3>表</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>表</th>
+<th>主要字段</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>labs</code></td>
+<td><code>id,date,category,name,value,unit,low,high,source,note,reportId</code></td>
+</tr>
+<tr>
+<td><code>reports</code></td>
+<td><code>id,date,title,panel,specimen,hospital,note,file,createdAt</code></td>
+</tr>
+<tr>
+<td><code>weights</code></td>
+<td><code>id,date,kg,tag,waist,note</code></td>
+</tr>
+<tr>
+<td><code>body</code></td>
+<td><code>id,date,chest,waist,hip,note,createdAt</code></td>
+</tr>
+<tr>
+<td><code>todo</code></td>
+<td><code>k,v</code>（勾选状态）</td>
+</tr>
+<tr>
+<td><code>meta</code></td>
+<td><code>k,v</code>（只存 <code>savedAt</code>，纯展示）</td>
+</tr>
+</tbody></table></div>
+<h3>三条容易搞错的规则</h3>
+<ol>
+<li><strong>去重 key = <code>date|category|name|unit</code></strong>。重复导入同一份报告不会翻倍。改过日期或单位后再导入，会被当成新记录——这是设计如此，不是 bug。</li>
+<li><strong>腰围只有一份</strong>，存在 <code>body.waist</code>。<code>weights.waist</code> 是历史字段，读到就由 <code>migrateWaistToBody()</code> 搬走（id = <code>b-</code> + 体重 id，幂等）。前端不再往 <code>weights</code> 写腰围。</li>
+<li><strong>报告的 <code>title</code> / <code>panel</code> / <code>specimen</code> 是三个不同的东西</strong>：<code>title</code> 是医院打印的申请项目原文，<code>panel</code> 是组套大类，<code>specimen</code> 是样本类型。后两个<strong>只转写不推测</strong>，认不出就留空。</li>
+</ol>
+<h3>接口</h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>方法</th>
+<th>路径</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>GET</td>
+<td><code>/api/all</code></td>
+<td>全量（labs / reports / weights / body / done / savedAt）</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/labs</code></td>
+<td>整表替换，事务内</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/reports</code></td>
+<td>整表替换；<code>file</code> 传 dataURL 时自动落盘、旧图删</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/state</code></td>
+<td>weights + done + body</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/export</code></td>
+<td><code>health-archive</code> v2，图片读回 base64</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/import</code></td>
+<td>合并导入（v1 / v2 / 旧 <code>health-labs</code> 都吃）</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/ocr</code></td>
+<td>图片 → 文本行（TSV）</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/ping</code></td>
+<td>探活</td>
+</tr>
+</tbody></table></div>
+<p>整表替换的选择是刻意的：记录量在千级，一次写全表比做增量协议省事得多，事务保证不会写半个。<strong>真到万级再改增量。</strong></p>
+<p>备份格式 <code>health-archive</code> v2 = <code>labs + weights + body + done + reports</code>（含图片 base64）。
+⚠️ 服务端 <code>PUT /api/state</code> 与 <code>POST /api/import</code> 对 <code>body</code> 必须写 <code>data.get(&quot;body&quot;)</code>，<strong>不能写 <code>data.get(&quot;body&quot;) or []</code></strong>——老备份没有 body 字段，<code>or []</code> 会把围度表清空。</p>
+<hr>
+<h2>7. 已经做完的</h2>
+<p><strong>浏览与阅读</strong></p>
+<ul>
+<li>九个视图：总览、健康问题、检验指标、<strong>全部检验记录</strong>（<code>#/labs-all</code>，侧栏无入口，从检验页进）、检查时间线、用药记录、复诊待办、减重记录、个人资料</li>
+<li>只读内容（问题、主题、证据分级、时间线、用药）来自 <code>assets/data.js</code>，是 <code>docs/</code> 下 Markdown 的摘要</li>
+</ul>
+<p><strong>录入（四条通道）</strong></p>
+<ul>
+<li>手填单条</li>
+<li>粘贴报告文本 → 逐行解析 → 预览表勾选确认</li>
+<li>上传 CSV → 表头映射</li>
+<li>上传/拍照 → 本机 OCR → 同一个预览表</li>
+</ul>
+<p><strong>编辑</strong></p>
+<ul>
+<li>全部检验记录：按日期分组，关键词 + 类别 + 来源报告 + 时间范围筛选，每行编辑/删除，改完留在列表</li>
+<li>报告原件：改日期、名称、组套、样本类型、医院、备注，可换图或移除</li>
+<li>体重、围度：明细表逐行编辑删除</li>
+<li>待办：点勾选框</li>
+</ul>
+<p><strong>数据</strong></p>
+<ul>
+<li>SQLite 单库 + 图片落盘</li>
+<li>导出/导入 v2 备份（含图片）</li>
+<li>浏览器旧数据合并（幂等）</li>
+<li>报告图片与记录解耦：删记录才删文件</li>
+</ul>
+<p><strong>其他</strong></p>
+<ul>
+<li>移动端适配（列表列收放、底部 tab、&quot;更多&quot;菜单）</li>
+<li>打印样式</li>
+<li>文档体系：README + 使用指南 + 22 份内容文档，含 HTML 渲染版与断链检查</li>
+</ul>
+<hr>
+<h2>8. 关键决策与理由</h2>
+<p>接手时最容易&quot;顺手改掉&quot;的几件事，改之前先看理由：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>决策</th>
+<th>理由</th>
+<th>什么情况下该推翻</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>用 SQLite 而不是 JSON 文件</td>
+<td>JSON 每次重写整包，写到一半崩就毁库，并发还会互相覆盖；SQLite 有 WAL + 事务</td>
+<td>数据量掉到几十条且永远单机单进程——但没必要为此改</td>
+</tr>
+<tr>
+<td>不再用 localStorage 存业务数据</td>
+<td>上限约 5 MB，报告照片一多就爆；清站点数据就全没；换浏览器就丢</td>
+<td>不需要，服务已经够轻</td>
+</tr>
+<tr>
+<td>服务用标准库 <code>http.server</code></td>
+<td>不引入框架，装个 Python 就能跑，依赖只在 OCR 那侧</td>
+<td>需要多用户/远程访问时才考虑换</td>
+</tr>
+<tr>
+<td>只转写不推断</td>
+<td>认错一个数比少录一条更糟；低置信度默认不勾选，最终由人确认</td>
+<td>永不</td>
+</tr>
+<tr>
+<td>围度独立于体重</td>
+<td>围度不依附体重，没称体重也能量；体重记录的语义保持干净</td>
+<td>永不</td>
+</tr>
+<tr>
+<td>文档与数据分目录，<code>data/</code> 整目录不进 Git</td>
+<td>文档可以发给别人看，数据不行；同目录一次误提交就带出照片</td>
+<td>永不</td>
+</tr>
+<tr>
+<td>说明性文档禁写健康信息</td>
+<td>会被转发、会被截图</td>
+<td>永不</td>
+</tr>
+<tr>
+<td>报告拆 <code>title</code> / <code>panel</code> / <code>specimen</code></td>
+<td>医院打印的原始项目名要留档，组套和样本是检索维度</td>
+<td>永不</td>
+</tr>
+<tr>
+<td>全部记录页独立成路由而不是嵌在检验页</td>
+<td>45 条渲染进趋势页会拖慢首屏，也让筛选状态和图表状态打架</td>
+<td>数据量小时可以合并，但要保留全量入口</td>
+</tr>
+</tbody></table></div>
+<hr>
+<h2>9. 没做完的 / 待你拍板</h2>
+<p>按优先级：</p>
+<ol>
+<li><strong>提交代码</strong>（最急）。当前 40 项改动全在工作区。<code>data/</code> 已被正确忽略（核过：<code>git status</code> 里 0 个 data 条目），可以放心 <code>git add -A</code>。提交信息建议按四块写：目录迁移 / SQLite 化 / 围度 / 全部记录页。</li>
+<li><strong>定性指标未支持</strong>。尿蛋白、隐血这类阴性/阳性、<code>+−</code> 结果现在进&quot;跳过&quot;列表，不落库、不进趋势。要做就得新增一类字段（<code>qualitative</code>），<strong>不折算成数值</strong>，只追踪阴性与阳性变化。这是上次提过、用户还没回答的问题。</li>
+<li><strong>老报告的 <code>panel</code> / <code>specimen</code> 可能为空</strong>。字段是后加的，早于字段扩展录入的报告只有 <code>title</code>。补法：重导一次 <code>data/报告原件录入包.json</code>（按 id 合并，不翻倍），或在报告原件列表里手动编辑。</li>
+<li><strong>备份没有提醒</strong>。只有手动点&quot;导出完整备份&quot;。数据只有 <code>data/health.db</code> 一份，删掉就真没了。可考虑启动时检查上次导出时间，超 30 天提示。</li>
+<li><strong>服务没有守护</strong>。关掉窗口就停，没有开机自启。日常用 <code>启动健康档案.bat</code> 足够；如果哪天想常驻，再考虑注册计划任务，别做成系统服务（个人机器没必要）。</li>
+<li><strong>影像是死链的</strong>。<code>data/</code> 下有 DICOM 原片和渲染切片，文档里能链过去，但页面里没有影像视图。要不要做，取决于用户是否真的会在页面里看图。</li>
+<li><strong><code>docs/</code> 的 HTML 是手工同步的</strong>。22 份 md / 23 份 html，改完 md 要重新生成。没有自动构建——这是刻意的，避免引入 node 工具链。</li>
+</ol>
+<hr>
+<h2>10. 已知的坑（都踩过）</h2>
+<p><strong>运行相关</strong></p>
+<ul>
+<li>改了 <code>health_server.py</code> 必须重启进程才生效，前端刷新没用。旧进程不退出时新进程会 bind 失败。</li>
+<li>助手/脚本写不进用户的浏览器存储（Playwright 是独立 profile）。但可以经 <code>/api/*</code> 直接写库——写之前先 <code>GET /api/all</code> 看全量，<code>PUT</code> 是整表替换，漏传就删数据。</li>
+<li>测试必须用 <code>-p 8799 -d &lt;临时目录&gt;</code>（<code>Tools/e2e-server.js</code> 已经这么做）。在真库上做写入测试会污染数据。</li>
+</ul>
+<p><strong>前端相关</strong></p>
+<ul>
+<li>CSS 特异性是主要坑源。全局 <code>table.data th:nth-child(n)</code>（0,2,2）会压过组件自己的类选择器，恢复某列要用同特异性 + 后置：<code>table.data.laball-table td.col-rep</code>。</li>
+<li>表格加列后，媒体查询里所有 <code>nth-child(n)</code> 的索引全部错位，改列结构必须同步重算。</li>
+<li><code>.field textarea{min-height:64px}</code> 会压过自定义 textarea 类，覆盖要写 <code>.field textarea.xxx</code>。</li>
+<li><code>const</code> 重复声明会让整个 <code>app.js</code> 不执行、页面全白，且控制台只有一行 <code>Identifier ... has already been declared</code>。改完先 <code>node --check assets/app.js</code>。</li>
+</ul>
+<p><strong>解析相关</strong></p>
+<ul>
+<li><code>parse.js</code> 里日期有两条路：<code>ctx.date</code> 是弹层默认值，<code>ctx.found</code> 是正文发现的真实日期。行日期只取 <code>found</code>，结尾才 <code>found || opts.date</code> 兜底。曾经搞混，整批导入记成了当天。</li>
+<li>&quot;申请项目：xxx&quot; 这类表头行必须无条件跳过，否则 <code>尿微量白蛋白比肌酐2项</code> 会被当成一条&quot;值 = 2&quot;的记录。</li>
+<li>尿液的标本类型要参与分类：报告写&quot;标本类型：尿液&quot;时，白细胞/红细胞/未溶红细胞% 归&quot;其他&quot;，不能进&quot;血常规&quot;。</li>
+</ul>
+<p><strong>文档相关</strong></p>
+<ul>
+<li><code>Tools/生成HTML档案.cjs</code> <strong>对已存在的 HTML 不覆盖</strong>。改完 md 要先把旧 html 删掉（备份到别处）再跑。</li>
+<li>断链检查要能处理文件名里的成对括号，正则会在 <code>(胶5)</code> 处截断，得用平衡括号扫描。</li>
+<li>HTML 里中文是 URL 编码的，重写路径时 <code>quote</code> 的 safe 必须含 <code>+</code> 和 <code>()</code>。</li>
+<li>README 里 <code>data/影像/&lt;部位&gt;/</code> 是<strong>脱敏写法</strong>，真实目录带部位名。别按字面去找 <code>&lt;部位&gt;</code> 这个文件夹。</li>
+</ul>
+<p><strong>依赖相关</strong></p>
+<ul>
+<li>本机 pip 全局配了清华源，清华缺 <code>rapidocr</code>，装包必须显式 <code>-i https://pypi.org/simple</code>。</li>
+<li>本机没有 Playwright 自带浏览器，截图脚本要 <code>chromium.launch({channel:&#39;chrome&#39;})</code>。</li>
+</ul>
+<hr>
+<h2>11. 验收怎么跑</h2>
+<p>四条命令，全绿才算没改坏：</p>
+<pre><code class="language-bash">cd F:/Health
+
+# 解析器单元测试（75 项，最快，不需要浏览器）
+node Tools/test-parse.cjs
+
+# 下面四套要 Node + Playwright，并加载托管环境的 node_modules
+export NODE_PATH=C:/Users/muyuys/.workbuddy/binaries/node/workspace/node_modules
+NODE=C:/Users/muyuys/.workbuddy/binaries/node/versions/22.22.2-6/node.exe
+
+$NODE Tools/e2e-import.js    # 26 项：文本 / CSV / 手机端导入
+$NODE Tools/e2e-report.js    # 32 项：报告原件、图片、组套样本
+$NODE Tools/e2e-ocr.js       # 19 项：识别 → 预览 → 入库（需服务在跑）
+$NODE Tools/e2e-server.js    # 21 项：8799 临时库，落库/出图/导出/删除
+
+# 文档断链
+python Tools/检查文档链接.py   # 期望「断链 0 处」
+</code></pre>
+<p><code>e2e-ocr</code> 和 <code>e2e-server</code> 需要本机服务在跑（前者打 8765 的 <code>/ocr</code>，后者自己起 8799）。</p>
+<hr>
+<h2>12. 接手第一小时建议</h2>
+<ol>
+<li>双击 <code>启动健康档案.bat</code>，确认侧栏是<strong>绿点</strong>「数据已入本机库」，翻一遍九个视图。</li>
+<li>到个人资料页点一次「导出完整备份」，确认能下载出 JSON——先把可恢复性验证一遍，再动代码。</li>
+<li>跑上面四套测试，确认基线全绿。</li>
+<li><strong>把当前改动提交了</strong>（40 项）。这是唯一的硬性待办。</li>
+<li>读 <code>.workbuddy/memory/MEMORY.md</code>——项目约定、踩坑清单都在那儿，比代码注释新。</li>
+<li>再决定第 9 节里哪件事值得做。别一次改两件：这个项目没有类型系统也没有构建，出错只能靠测试和肉眼。</li>
+</ol>
+</main><footer>本地健康档案 · 请根据实际情况更新记录</footer></body></html>

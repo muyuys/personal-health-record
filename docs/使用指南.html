@@ -1,0 +1,288 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>使用指南 · 个人健康档案</title><style>:root{color-scheme:light;--ink:#203831;--muted:#63746e;--accent:#276c59;--line:#dce7df}*{box-sizing:border-box}body{margin:0;background:#f3f7f2;color:var(--ink);font:16px/1.75 system-ui,'Microsoft YaHei',sans-serif}header{background:#163f34;color:#fff;padding:22px max(5vw,24px)}header a{color:#d8f1e5;text-decoration:none;font-weight:600}header span{display:block;font-size:12px;letter-spacing:.16em;color:#aed3c1}main{max-width:1050px;margin:32px auto;padding:36px 48px;background:white;border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 35px #194f3010}h1{font-size:2em;line-height:1.3;margin:0 0 14px}h2{border-top:1px solid var(--line);padding-top:24px;margin-top:32px;font-size:1.4em}h3{margin-top:24px}a{color:var(--accent);overflow-wrap:anywhere}p,li{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;font-size:.93em}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#edf5ef} .table-wrap{overflow-x:auto}blockquote{margin:20px 0;padding:1px 18px;border-left:4px solid #91bda7;background:#f1f7f2;color:#415c4e}img{max-width:100%;height:auto}footer{max-width:1050px;margin:auto;padding:0 24px 32px;color:var(--muted);font-size:.85em}@media(max-width:600px){main{margin:12px;padding:24px 20px;border-radius:10px}header{padding:16px 20px}h1{font-size:1.65em}}@media print{body{background:white}main{box-shadow:none;border:0;margin:0;padding:0}header{background:white;color:black}header a{color:black}}</style></head><body><header><span>PERSONAL HEALTH RECORD</span><a href="../index.html">个人健康档案 / 首页</a></header><main><h1>使用指南</h1>
+<p>个人健康档案是一份<strong>存在本机</strong>的档案：页面由这台电脑上的一个本地服务提供，数据存在 <code>data/health.db</code>，不上传任何服务器。这份指南按「第一次打开 → 日常怎么用 → 出问题怎么办」的顺序写。</p>
+<blockquote>
+<p>只想了解档案里有什么内容，看 <a href="../README.html">README.md</a>；只想看数据存在哪、怎么备份，直接跳到本文的<a href="#8-%E6%95%B0%E6%8D%AE%E5%AD%98%E5%9C%A8%E5%93%AA%E4%BC%9A%E4%B8%8D%E4%BC%9A%E4%B8%A2">第 8 节</a>。</p>
+</blockquote>
+<hr>
+<h2>1. 打开</h2>
+<p>双击根目录的 <strong><code>启动健康档案.bat</code></strong>。</p>
+<ul>
+<li>会弹出一个黑窗口（这是本机服务，别关），几秒后浏览器自动打开 <code>http://127.0.0.1:8765/</code>。</li>
+<li>数据存在 <code>data/health.db</code>（SQLite 数据库），报告照片存在 <code>data/报告原件/files/</code>。<strong>不联网</strong>，也不上传到任何服务器。</li>
+<li>用完了关掉黑窗口即可，浏览器标签页可以留着。</li>
+<li>直接把 <code>index.html</code> 拖进浏览器也能打开，但那是「应急模式」：连不上服务，数据退回到浏览器存储，侧栏会显示「浏览器存储模式」。日常请用 bat 启动。</li>
+<li>手机上看：把整个文件夹拷到手机、装 Python 跑服务太重。日常建议在电脑上录入，手机通过同一台电脑的局域网地址查看（需要改监听设置，默认只监听本机）。</li>
+</ul>
+<p><strong>第一次打开会看到空白的检验页和体重页——这是正常的。</strong> 档案里的文字内容（健康问题、检查时间线、用药记录）来自 Markdown 文件整理，已经在页面里；检验结果、体重这类需要你自己填的数据，初始是空的。空不等于正常，也不等于没有。</p>
+<hr>
+<h2>2. 界面结构</h2>
+<p>左侧是七个视图，右侧是当前页内容；页头右侧是搜索和该页的主要按钮。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>视图</th>
+<th>用来做什么</th>
+<th>能否在页面里改</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>总览</td>
+<td>一屏看体重/BMI、减重进度、需要处理的事、最近记录、各主题状态</td>
+<td>只读（点卡片跳转）</td>
+</tr>
+<tr>
+<td>健康问题</td>
+<td>每个问题的证据分级、仍需补充什么、关联资料</td>
+<td>只读</td>
+</tr>
+<tr>
+<td><strong>检验指标</strong></td>
+<td>趋势图、最近录入、指标清单、报告原件</td>
+<td><strong>可增删改</strong></td>
+</tr>
+<tr>
+<td>检查时间线</td>
+<td>按日期查检查与就诊</td>
+<td>只读</td>
+</tr>
+<tr>
+<td>用药记录</td>
+<td>历史用药与最近自述用药分开</td>
+<td>只读</td>
+</tr>
+<tr>
+<td><strong>复诊待办</strong></td>
+<td>预约与待补充项，可勾选完成</td>
+<td><strong>可勾选</strong></td>
+</tr>
+<tr>
+<td><strong>减重记录</strong></td>
+<td>体重曲线、7 天晨重基线、胸腰臀围度</td>
+<td><strong>可增删改</strong></td>
+</tr>
+</tbody></table></div>
+<p>为什么有的页面不能改：健康问题、时间线、用药是从 <code>docs/健康档案/*.md</code> 整理来的结论性内容，改它要改原件、留痕，不能顺手一点就变。想改这些，改对应的 Markdown 文件，再让页面数据同步（见 7.4）。</p>
+<p>同理，复诊待办页头的「<strong>添加待办</strong>」只是把未完成项列出来给你看，<strong>不新建待办</strong>——待办本身属于计划清单，要改还是改档案文件。检验结果、体重、围度、报告原件才是页面里真正的可写数据。</p>
+<p>右上角的放大镜是全文搜索，输入项目名或关键词直接跳转。</p>
+<p>除了这七个视图，左侧栏底部还有一张「数据仅存本机」卡片，点进去是<strong>个人资料</strong>页：基础资料、档案完整度、数据存储（条数、报告份数、最后保存时间）、导出备份、浏览器数据合并。手机上从底部「更多」进入。</p>
+<hr>
+<h2>3. 每天/每周要做的事</h2>
+<p><strong>体重（建议每天晨起、排尿后、进食前）</strong></p>
+<p>减重记录页 → 「记录体重」→ 填日期、体重，条件选「晨重」。填了「同日其他时段」的记录不会算进 7 天晨重基线，避免自己骗自己。</p>
+<p><strong>围度（不必天天量，两周一次就够）</strong></p>
+<p>减重记录页 → 围度卡片右上「记录围度」，或在同一个弹层里切到「胸腰臀围度」页签。胸、腰、臀三项都可以空着，但至少填一项；同一天再记会更新当天那一组，不会多出一条。体重表单里填的腰围也会自动并进围度记录——<strong>腰围只有一份</strong>，不会两个地方各存一个数。</p>
+<p>量法固定下来才有可比性：腰围按肚脐水平一周、呼气末；臀围取最突出处；胸围取乳头水平。<strong>围度没有统一参考区间</strong>，页面只做你自己的前后对比，不会给「正常 / 异常」的结论。围度是独立的一组测量，不依附体重——没称体重也能单独记。</p>
+<p><strong>待办勾选</strong></p>
+<p>复诊待办页每项前面有勾选框，做完就勾。<strong>勾上只代表「这件事我处理了」，不代表已经就诊、也不代表结论已确认</strong>——真正的结论仍然写回档案文件。</p>
+<p><strong>新增一次检验（拿到报告后）</strong></p>
+<p>见第 6 节，四条路选一条。</p>
+<hr>
+<h2>4. 检验指标页怎么读</h2>
+<ul>
+<li><p><strong>趋势图</strong>：选一个指标看历史曲线。浅色带是参考区间；如果某几次报告没印区间，图例会写「N 次无参考区间」，<strong>不会</strong>说成「均在参考范围内」。</p>
+</li>
+<li><p><strong>提示列</strong>：单独一列，共四个符号。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>符号</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>↑</code></td>
+<td>高于参考上限</td>
+</tr>
+<tr>
+<td><code>↓</code></td>
+<td>低于参考下限</td>
+</tr>
+<tr>
+<td><code>·</code></td>
+<td>在参考区间内</td>
+</tr>
+<tr>
+<td><code>—</code></td>
+<td>报告没印参考区间，无法判断</td>
+</tr>
+</tbody></table></div>
+<p>深色的箭头表示<strong>报告原文就这么标的</strong>；半透明的箭头表示<strong>报告没标、是按你填的区间算出来的</strong>。两者不一样，别混。</p>
+</li>
+<li><p><strong>报告列</strong>：点报告名可以打开那张报告的原件照片。</p>
+</li>
+<li><p><strong>时间范围</strong>：图表右上角可切「全部 / 近 1 年」。没数据时会出现「预览示例」，示例只用于看样式，不写入任何存储；点「退出示例」回到空态。</p>
+</li>
+</ul>
+<hr>
+<h2>5. 改已录入的数据</h2>
+<p>「最近录入」只是预览，固定只放最近 8 条，更早的记录不在那里。但每条记录都有编辑入口：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>数据</th>
+<th>入口</th>
+<th>能做什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>检验结果</td>
+<td>检验页页头「全部记录」，或「最近录入」右上角「全部 N 条 →」</td>
+<td>全部结果按日期分组列出；按项目 / 备注 / 医院搜索，按类别和来源报告筛选；每行「编辑 / 删除」</td>
+</tr>
+<tr>
+<td>报告原件</td>
+<td>检验页下方「报告原件」</td>
+<td>每份「查看 / 编辑 / 删除」；可改日期、名称、组套、样本类型、医院、备注，也能换图或移除原件</td>
+</tr>
+<tr>
+<td>体重</td>
+<td>减重记录页「记录明细」表</td>
+<td>每行「编辑 / 删除」</td>
+</tr>
+<tr>
+<td>围度</td>
+<td>减重记录页「围度明细」表</td>
+<td>每行「编辑 / 删除」；同一天只有一条，改日期会跟着搬</td>
+</tr>
+<tr>
+<td>待办</td>
+<td>复诊待办页</td>
+<td>点勾选框切换，勾错再点一次</td>
+</tr>
+</tbody></table></div>
+<p>几点说明：</p>
+<ul>
+<li>从「全部记录」里编辑，保存后<strong>留在原列表</strong>，不会被弹回趋势图，方便一次核对一批</li>
+<li>改的是本机库里的记录，<strong>不会动医院给的原件</strong>；原件照片仍在「报告原件」里</li>
+<li>删除不可撤销。批量核对前先导一份备份</li>
+<li>检验记录按「日期 + 类别 + 项目 + 单位」判重；把日期或单位改掉之后再导入同一份报告，会被当成新记录</li>
+</ul>
+<hr>
+<h2>6. 把报告变成数据（四条路）</h2>
+<p>入口都在检验页页头：<strong>「导入报告」</strong>（批量/图片）和 <strong>「录入结果」</strong>（一条一条填）。所有解析都在本机完成，不联网。</p>
+<h3>6.1 粘贴文字（最常用）</h3>
+<ol>
+<li>在手机医院 App 或体检报告 PDF 里选中文字，复制</li>
+<li>页面 → 导入报告 → 粘贴文本 → 粘贴 → 「解析预览」</li>
+<li>在预览表里逐行核对：日期、项目名、结果、单位、参考范围、类别</li>
+<li>选「归到」哪份报告（见第 7 节），勾选要写入的行 → 「写入 N 条」</li>
+</ol>
+<p>会认得的常见形态：行首序号、<code>*</code>「互认」标记、<code>项目名(酶法) ENG</code> 这种带方法学和英文缩写、<code>下限--上限</code> 双横线区间、页脚 <code>YY-MM-DD</code> 两位年份。</p>
+<p><strong>正文里带日期时以正文为准</strong>，不会记成你今天导入的日期。</p>
+<p>预览表里出现琥珀色竖线 + 项目名下方写原因的行，是「没把握」的行：缺单位、缺参考区间、项目名可能粘连。它们<strong>默认不勾选</strong>，请看过原件再决定。报告没印单位就按 <code>—</code> 记录，不给你编一个。</p>
+<h3>6.2 图片识别（和数据库是同一个服务）</h3>
+<p>一次选多张照片，自动认成文字，再走 5.1 的预览核对。</p>
+<p>第一次使用前：</p>
+<ol>
+<li>双击 <code>server/安装依赖.bat</code>，等它跑完（只做一次，约 2 分钟）</li>
+<li>双击 <code>启动健康档案.bat</code>，窗口里出现「识别　引擎就绪」</li>
+<li>页面 → 导入报告 → 图片识别，状态条会变成「识别服务已就绪」</li>
+</ol>
+<p>服务没起来也能用数据库，只是图片识别不可用（那是唯一需要额外依赖的功能）。它只监听本机 <code>127.0.0.1:8765</code>，照片在内存里过一遍就丢，不落盘、不上传、不写日志。</p>
+<p><strong>它会认错字</strong>，常见于这几类：方法学括注、带斜杠的单位、希腊字母、英文缩写里的空格、上下箭头。识别结果是可编辑的文字框，改掉再解析。字迹模糊的行会提示行数。</p>
+<blockquote>
+<p>不想装依赖也完全可以：用手机系统取字（iOS 实况文本 / 安卓长按提取文字）复制过来，一样走 5.1。</p>
+</blockquote>
+<h3>6.3 CSV</h3>
+<p>体检中心导出的表格，需含「项目」「结果」两列表头。Excel 要先「另存为 CSV」。</p>
+<h3>6.4 JSON 备份</h3>
+<p>整库恢复，按记录 ID 合并。用于换电脑、换浏览器后把数据搬回来（见 7.3）。</p>
+<hr>
+<h2>7. 报告原件：让每条数据能追回原件</h2>
+<p>检验页下方有「报告原件」卡片。</p>
+<ul>
+<li><strong>新建</strong>：日期、名称、项目组套、检验样本、医院、备注，选一张照片或截图。图片会自动压到长边 1500px 再存（原图太大存不进浏览器）。可以只登记信息不传图。</li>
+<li><strong>三层名称</strong>：报告名称写医院打印的那一行（如「肝肾常规」）；项目组套写大类（如「生化」「血常规」）；检验样本写血清 / 血浆 / 全血 / 尿液。后两项有候选列表，可直接选，也能自己填；报告上没写就留空。</li>
+<li><strong>关联</strong>：导入时在预览页选「归到」；单条录入/编辑时选「所属报告」。不关联也可以，表格里显示 <code>—</code>。</li>
+<li><strong>追溯</strong>：最近录入表的「报告」列点一下就打开原件照片。</li>
+<li>走图片识别时选「＋ 新建一份报告」，<strong>会把刚才那张照片一起存成原件</strong>，不用再传一次；报告表头里的「标本类型」「申请项目」也会自动填进表单，记得核对一眼。</li>
+<li><strong>删除报告不会删除数据</strong>，只解除关联。</li>
+</ul>
+<p>图片存成 <code>data/报告原件/files/</code> 下的真实文件，不占浏览器配额，只占磁盘空间。</p>
+<hr>
+<h2>8. 数据存在哪、会不会丢</h2>
+<h3>8.1 存在哪</h3>
+<p>存在<strong>这个文件夹里的一个数据库文件</strong>：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>位置</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>data/health.db</code></td>
+<td>检验结果、体重记录、身体围度、待办勾选、报告的登记信息（日期/名称/组套/样本/医院/备注）</td>
+</tr>
+<tr>
+<td><code>data/报告原件/files/</code></td>
+<td>报告照片，一份报告一个文件，文件名是报告的 id</td>
+</tr>
+</tbody></table></div>
+<p><code>health.db</code> 是 SQLite 数据库，用记事本打不开；想看内容可以用 DB Browser for SQLite 之类的工具打开，但<strong>平时不需要碰它</strong>。页面是它唯一的正常入口。</p>
+<p><strong>以下情况会丢</strong>：删掉或覆盖 <code>data/health.db</code>、<code>data/</code> 目录所在的磁盘损坏。换浏览器、清浏览器缓存、换电脑都<strong>不会</strong>影响它（数据不在浏览器里）。</p>
+<h3>8.2 服务没启动会怎样</h3>
+<p>页面还能打开，但连不上数据库，会退回浏览器存储：</p>
+<ul>
+<li>侧栏那张卡片会变成「浏览器存储模式」，红点 + 提示</li>
+<li>这时录入的内容<strong>只存在浏览器里</strong>，和数据库不是同一份</li>
+<li>关掉标签页重开、或者换个浏览器，这部分就看不到了</li>
+</ul>
+<p>所以看到「浏览器存储模式」就先双击 <code>启动健康档案.bat</code>，回到 <code>http://127.0.0.1:8765/</code>。如果这时浏览器里确实有想保留的记录，去「个人资料 → 数据存储」点<strong>合并浏览器数据</strong>，它会按「日期｜类别｜项目｜单位」去重后并进库里，点两次也不会翻倍。</p>
+<h3>8.3 备份与恢复（服务自动备份 + 建议每月手动导出）</h3>
+<p>「数据仅存本机」卡片 → <strong>导出备份</strong> → 得到一个 <code>健康档案备份-YYYY-MM-DD.json</code>，这是<strong>你磁盘上的真实文件</strong>，可以拷到网盘或 U 盘。</p>
+<ul>
+<li><strong>自动滚动备份（服务自己会做）</strong>：每次启动 <code>server/health_server.py</code>，会在 <code>data/backups/</code> 下生成当天的一份数据库快照 <code>health-YYYY-MM-DD.db</code>（每天最多 1 份，重复启动不会重复生成），并自动清理超过 <code>BACKUP_KEEP_DAYS</code>（默认 30）天的旧备份。用 SQLite 官方 backup API 生成，服务运行中也能拿到一致快照。<code>GET /ping</code> 会返回 <code>backupDir</code> / <code>backups</code> / <code>lastExportAt</code> / <code>exportDue</code>，方便查看。</li>
+<li><strong>用自动备份恢复（整库）</strong>：先关掉服务窗口 → 建议把当前的 <code>data/health.db</code> 改名留底 → 把要恢复的那份 <code>data/backups/health-YYYY-MM-DD.db</code> 复制成 <code>data/health.db</code> → 重新启动服务。想回到某天的数据状态，挑对应日期的文件即可。</li>
+<li><strong>导出提醒</strong>：若距上次导出已超过 <code>EXPORT_REMIND_DAYS</code>（默认 7 天）或从未导出过，服务启动时（以及常驻期间每 6 小时）会在控制台打印提醒，提示你另存一份 JSON。</li>
+<li>备份含检验、体重、围度、勾选状态、报告原件图片（v2 格式）。服务模式下由 <code>/api/export</code> 生成，会把 <code>files/</code> 里的图片读回 base64，所以换一台机器也能完整恢复。</li>
+<li>恢复：导入数据 → JSON 备份 → 选文件。先按记录 ID 合并，再按「日期｜类别｜项目｜单位」去重，同一项以文件里的为准，重复导入不会翻倍。也可以只导入别人整理好的部分数据，不必整库覆盖。</li>
+<li>更省事的整库备份：关掉服务窗口，把整个 <code>data/</code> 目录复制走（含数据库和照片）。</li>
+<li>原始病历、检查报告 PDF、影像仍要自己另外备份，JSON 里只有整理后的数据。</li>
+</ul>
+<p>页面上没有「清空数据库」按钮——这是故意的。真要清空，关掉服务后删除 <code>data/health.db</code>，<strong>删之前先导出备份</strong>。</p>
+<h3>8.4 页面上的文字内容从哪来、怎么更新</h3>
+<p>健康问题、检查时间线、用药记录、待办清单这些<strong>只读内容</strong>不在数据库里，它们在 <code>assets/data.js</code> 里，是 <code>docs/健康档案/*.md</code> 等原始资料的结构化摘要。</p>
+<p>所以要改这类内容，顺序是：</p>
+<ol>
+<li>改对应的 Markdown 原件（例如 <code>docs/健康档案/健康问题总表.md</code>）</li>
+<li>同步到 <code>assets/data.js</code>（这一步不懂代码就让助手做，说明改哪一条即可）</li>
+<li>刷新页面</li>
+</ol>
+<p><code>Tools/生成HTML档案.cjs</code> 只把 README 生成成 <code>README.html</code>，<strong>不负责同步 data.js</strong>，也不会覆盖 <code>index.html</code>——这点别搞混。</p>
+<p>数据库里的记录与 Markdown 是两套东西：删数据库不影响 Markdown，改 Markdown 也不影响已录入的记录。</p>
+<hr>
+<h2>9. 手机上</h2>
+<p>宽度小于 860px 自动切换：左侧目录收起，底部变成 4 个 tab + 「更多」。表格会隐藏单位、参考范围列，单位跟在内联显示；提示列始终保留。</p>
+<p>文字框在窄屏改成换行显示——列会对不齐，但比右半边看不见强。</p>
+<hr>
+<h2>10. 出问题怎么办</h2>
+<p><strong>打开后数据是空的</strong>
+先确认地址栏是 <code>http://127.0.0.1:8765/</code>，并且侧栏写着「数据已入本机库」。如果显示「浏览器存储模式」，说明服务没起来，先双击 <code>启动健康档案.bat</code>。</p>
+<p><strong>改了页面没变化</strong>
+浏览器缓存了旧文件。<code>Ctrl + F5</code> 强制刷新。</p>
+<p><strong>图片识别提示「连不上本机识别服务」</strong></p>
+<ol>
+<li>黑窗口是不是关了？重新双击 <code>启动健康档案.bat</code></li>
+<li>窗口里有没有报错</li>
+<li>点「重新检测」</li>
+<li>如果提示端口被占用，说明已经有一个在跑，直接用就行</li>
+</ol>
+<p><strong>报告图片存不进去 / 提示存储空间不足</strong>
+这是浏览器存储模式才会遇到的限制（约 5 MB）。双击 <code>启动健康档案.bat</code> 改用数据库就没有这个上限了。</p>
+<p><strong>把整个文件夹拷到另一台电脑后，图片识别打不开</strong>
+<code>server/.venv</code> 是这台机器上装好的 Python 环境（约 300 MB），拷过去通常不能用。在新电脑上重新双击一次 <code>server/安装依赖.bat</code> 即可。这个目录不参与任何备份，删了不影响数据。</p>
+<p><strong>导入后日期不对</strong>
+检查报告正文里有没有印日期。有日期以正文为准；没有才用你在弹层里填的默认日期。</p>
+<p><strong>导入的行被跳过了</strong>
+预览页下方「跳过 N 行，查看原因」会写每个原因。常见是「这一行没有数值」，比如页脚、标题、备注。</p>
+<hr>
+<h2>11. 边界（重要）</h2>
+<ul>
+<li>这个页面<strong>是整理工具，不是病历</strong>。它汇总、导航、画趋势，不替代医院报告原件、不替代医生解读。</li>
+<li>参考区间和 <code>↑</code>/<code>↓</code> 只说明「相对区间的位置」，不是诊断。不同医院区间不同，跨院数据直接比可能失真。</li>
+<li>空白代表<strong>没记录</strong>，不等于正常、不等于没有症状、不等于数值为 0。</li>
+<li>历史用药不等于当前用药。文件夹名、未验证的推测不等于确诊。</li>
+<li>证据一律分级：医院报告 / 本人描述 / 辅助分析 / 建议计划。看结论时先看它属于哪一类。</li>
+</ul>
+</main><footer>本地健康档案 · 请根据实际情况更新记录</footer></body></html>

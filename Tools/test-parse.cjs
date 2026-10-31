@@ -36,7 +36,7 @@ const T1 = `2026-10-20
 打印时间 2026-10-21`;
 
 const r1 = P.text(T1, { date: '2026-10-20' });
-eq(r1.rows.length, 11, 'T1 识别 11 条（含定性结果）');
+eq(r1.rows.length, 10, 'T1 识别 10 条');
 const get = (n) => r1.rows.find(r => r.name.includes(n));
 eq(get('白细胞').value, 6.23, 'T1 白细胞数值');
 eq(get('白细胞').unit, '10^9/L', 'T1 白细胞单位');
@@ -47,9 +47,8 @@ eq(get('总胆红素').category, '肝功能', 'T1 总胆红素类别');
 eq(get('尿酸').category, '肾功能', 'T1 尿酸类别');
 eq(get('ALT').category, '肝功能', 'T1 ALT 类别');
 eq(get('肌酐').date, '2026-10-20', 'T1 日期游标');
-eq(get('尿蛋白').qualitative, '阴性', 'T1 定性结果保留原文');
-eq(get('尿蛋白').value, null, 'T1 定性结果不伪造数值');
-eq(get('尿蛋白').flag, 'N', 'T1 阴性使用统一正常标志');
+eq(get('尿蛋白'), undefined, 'T1 定性结果已跳过');
+ok(r1.skipped.some(s => /阴性/.test(s.line) || s.why.includes('定性')), 'T1 记录跳过原因');
 
 /* ---------- 2. 双空格对齐、区间拆两列 ---------- */
 const T2 = `采样日期  2026-09-18
@@ -135,12 +134,11 @@ const T9 = `2026-10-20 09:12
 尿蛋白
 阴性`;
 const r9 = P.text(T9, {});
-eq(r9.rows.length, 3, 'T9 分行格式识别 3 条（含定性结果）');
+eq(r9.rows.length, 2, 'T9 分行格式识别 2 条');
 eq(r9.rows[0].name, '总胆固醇', 'T9 名称取自上一行');
 eq([r9.rows[0].low, r9.rows[0].high], [3.1, 5.7], 'T9 参考行补到上一条');
 eq(r9.rows[1].unit, 'mmol/L', 'T9 单位');
-eq(r9.rows[2].qualitative, '阴性', 'T9 分行定性结果保留');
-eq(r9.rows[2].value, null, 'T9 分行定性结果不伪造数值');
+ok(r9.skipped.some(s => s.why.includes('定性')), 'T9 定性结果跳过');
 
 /* ---------- 10. 无空格粘连：尿酸486μmol/L208-428 ---------- */
 const r10 = P.text('2026-10-20\n尿酸486μmol/L208-428\n血红蛋白148g/L 130-175', {});

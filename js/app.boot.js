@@ -2,6 +2,10 @@
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el) {
+    /* 「记录明细」折叠面板：原生 <details> 自行开合，这里记下展开状态，
+       翻页整页重渲染后仍保持展开（ui.openDetails）。 */
+    const fold = e.target.closest('details.detail-fold');
+    if (fold) ui.openDetails[fold.dataset.fold] = fold.open;
     if (e.target.id === 'modalRoot') closeModal();
     return;
   }
@@ -24,6 +28,27 @@ document.addEventListener('click', e => {
       ui.issueFilter = el.dataset.k;
       renderIssues();
       break;
+    case 'page': {
+      const key = el.dataset.key;
+      const p = parseInt(el.dataset.page, 10);
+      if (key && Number.isFinite(p) && ui.pager[key] !== p) {
+        ui.pager[key] = p;
+        const rmap = { weight: renderWeight, sleep: renderSleep, labs: renderLabAll };
+        (rmap[key] || route)();
+        const host = $('#view');
+        if (host) window.scrollTo({ top: host.getBoundingClientRect().top + window.scrollY - 90, behavior: 'smooth' });
+      }
+      break;
+    }
+    case 'page-size': {
+      const s = parseInt(el.dataset.size, 10);
+      if (PAGE_SIZES.includes(s)) {
+        ui.pageSize = s;
+        Object.keys(ui.pager).forEach(k => { ui.pager[k] = 1; });
+        route();
+      }
+      break;
+    }
     case 'todo': {
       const id = el.dataset.id;
       state.done[id] = !state.done[id];
@@ -418,13 +443,13 @@ document.addEventListener('click', e => {
       allergies = []; familyHistory = []; surgeries = []; visits = []; medications = []; symptoms = [];
       dietDays = []; dietWeeks = [];
       try {
-        storage.remove(LS_LABS);
-        storage.remove(LS_STATE);
-        storage.remove(LS_REPORTS);
-        storage.remove(LS_HISTORY);
-        storage.remove(LS_SYMPTOMS);
-        storage.remove(LS_DIET_DAYS);
-        storage.remove(LS_DIET_WEEKS);
+        localStorage.removeItem(LS_LABS);
+        localStorage.removeItem(LS_STATE);
+        localStorage.removeItem(LS_REPORTS);
+        localStorage.removeItem(LS_HISTORY);
+        localStorage.removeItem(LS_SYMPTOMS);
+        localStorage.removeItem(LS_DIET_DAYS);
+        localStorage.removeItem(LS_DIET_WEEKS);
       } catch (err) { }
       loadAll(); route(); toast('本机记录已清空');
       break;
@@ -686,12 +711,12 @@ function deleteVisit(id) {
 function medicationFormFields(m) {
   const r = m || {
     name: '', dose: '', frequency: '', route: '', startDate: todayISO(), endDate: '',
-    purpose: '', status: 'active', note: '', visitId: ''
+    purpose: '', status: 'active', note: '', infoDate: '', sourceRef: '', toVerify: '', visitId: ''
   };
   const visitOpts = ['<option value="">（不关联）</option>'].concat(
     visitsSorted().map(v => `<option value="${esc(v.id)}" ${r.visitId === v.id ? 'selected' : ''}>${esc(v.date)}　${esc(v.visitType || '就诊')}${v.department ? ' · ' + esc(v.department) : ''}</option>`)).join('');
   return `<div class="form-grid">
-    <div class="field wide"><label>药物名称 <b>*</b></label><input name="name" value="${esc(r.name)}" maxlength="80" required placeholder="商品名 / 通用名 / 成分"></div>
+    <div class="field wide"><label>药物名称 <b>*</b></label><input name="name" value="${esc(r.name)}" maxlength="80" required placeholder="商品名 / 通用名，如 海露玻璃酸钠滴眼液"></div>
     <div class="field"><label>剂量</label><input name="dose" value="${esc(r.dose)}" maxlength="60" placeholder="如 1 滴、5 mg、1 片"></div>
     <div class="field"><label>频次</label><input name="frequency" value="${esc(r.frequency)}" maxlength="60" placeholder="如 每日 3 次、每晚 1 次"></div>
     <div class="field"><label>途径</label><select name="route"><option value="">未标注</option>${MED_ROUTES.map(t => `<option value="${t}" ${r.route === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -700,6 +725,9 @@ function medicationFormFields(m) {
     <div class="field"><label>结束日期</label><input type="date" name="endDate" value="${esc(r.endDate)}"></div>
     <div class="field wide"><label>用途</label><input name="purpose" value="${esc(r.purpose)}" maxlength="120" placeholder="对应哪个问题 / 谁开的"></div>
     <div class="field wide"><label>关联就诊</label><select name="visitId">${visitOpts}</select></div>
+    <div class="field"><label>信息日期</label><input type="date" name="infoDate" value="${esc(r.infoDate || '')}"></div>
+    <div class="field wide"><label>来源</label><input name="sourceRef" value="${esc(r.sourceRef || '')}" maxlength="200" placeholder="回溯到的原始档案，如 用药记录.md 第9行"></div>
+    <div class="field wide"><label>待核对</label><input name="toVerify" value="${esc(r.toVerify || '')}" maxlength="300" placeholder="仍需向医生/本人确认的事项，如 浓度、开封日期、是否在用"></div>
     <div class="field wide"><label>备注</label><input name="note" value="${esc(r.note)}" maxlength="300" placeholder="疗效 / 不适 / 开封日期等"></div>
   </div>`;
 }
@@ -727,6 +755,7 @@ function openMedicationForm(rec) {
       dose: fd.get('dose'), frequency: fd.get('frequency'), route: fd.get('route'),
       startDate: fd.get('startDate'), endDate: fd.get('endDate'), purpose: fd.get('purpose'),
       status: fd.get('status'), note: fd.get('note'), visitId: fd.get('visitId'),
+      infoDate: fd.get('infoDate'), sourceRef: fd.get('sourceRef'), toVerify: fd.get('toVerify'),
       createdAt: rec ? rec.createdAt : Date.now()
     });
     medications = rec ? medications.map(x => x.id === rec.id ? obj : x) : [obj, ...medications];

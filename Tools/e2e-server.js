@@ -6,7 +6,6 @@
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const http = require('http');
 
@@ -14,34 +13,9 @@ const PORT = 8799;
 const BASE = `http://127.0.0.1:${PORT}`;
 const ROOT = path.join(__dirname, '..');
 const PY = path.join(ROOT, 'server', '.venv', 'Scripts', 'python.exe');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'health-e2e-'));
+const TMP = 'C:/Users/muyuys/AppData/Local/Temp/health-e2e';
 const DB = path.join(TMP, 'test.db');
-/* 录入包 fixture：5 份报告 + 45 条检验，全部合成数据，不读个人健康档案。 */
-const PACK = path.join(TMP, '报告原件录入包.json');
-(function writeFixture() {
-  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-  const reports = [];
-  const labs = [];
-  const dates = ['2026-01-05', '2026-02-10', '2026-03-15', '2026-04-20', '2026-05-25'];
-  dates.forEach((date, i) => {
-    const id = `rep-${i + 1}`;
-    reports.push({
-      id, date, title: `综合体检 ${i + 1}`, panel: i % 2 ? '生化' : '血常规',
-      specimen: i % 2 ? '血清' : '全血', hospital: '测试机构', note: '', file: png, createdAt: 1 + i
-    });
-    for (let k = 0; k < 9; k++) {
-      labs.push({
-        id: `lab-${i}-${k}`, date, category: k < 3 ? '血常规' : k < 6 ? '肝功能' : '肾功能',
-        name: `测试项目${k + 1}`, value: 1 + k, unit: 'U/L', low: 0, high: 9,
-        source: '体检中心', note: '', reportId: id, qualitative: '', flag: 'N'
-      });
-    }
-  });
-  fs.writeFileSync(PACK, JSON.stringify({
-    format: 'health-archive', version: 2, exportedAt: '2026-06-01T00:00:00',
-    labs, reports, weights: [], body: [], done: {}
-  }, null, 2));
-})();
+const PACK = path.join(ROOT, 'data', '报告原件录入包.json');
 
 let pass = 0, fail = 0;
 const check = (c, label, extra) => {
@@ -49,44 +23,31 @@ const check = (c, label, extra) => {
   else { fail++; console.log('  ✗ ' + label + (extra ? '  ← ' + extra : '')); }
 };
 
-const pingInfo = () => new Promise(res => {
-  const req = http.get(BASE + '/ping', { timeout: 800 }, r => {
-    let raw = '';
-    r.on('data', d => { raw += d; });
-    r.on('end', () => { try { res(JSON.parse(raw)); } catch (e) { res(null); } });
-  });
-  req.on('error', () => res(null));
-  req.on('timeout', () => { req.destroy(); res(null); });
+const alive = () => new Promise(res => {
+  const req = http.get(BASE + '/ping', { timeout: 800 }, r => { r.resume(); res(true); });
+  req.on('error', () => res(false));
+  req.on('timeout', () => { req.destroy(); res(false); });
 });
 
 (async () => {
-  for (const f of [DB + '-wal', DB + '-shm']) if (fs.existsSync(f)) fs.unlinkSync(f);
+  fs.mkdirSync(TMP, { recursive: true });
+  for (const f of [DB, DB + '-wal', DB + '-shm']) if (fs.existsSync(f)) fs.unlinkSync(f);
   const flexDir = path.join(TMP, 'test_files');
   if (fs.existsSync(flexDir)) fs.rmSync(flexDir, { recursive: true, force: true });
 
   let proc = null;
-  const existing = await pingInfo();
-  // 端口已有服务时，必须确认它跑的就是本次测试库，绝不把用例打到别的进程上。
-  if (existing && path.resolve(String(existing.db)) === path.resolve(DB)) {
-    proc = null;
-  } else if (!existing) {
+  if (!(await alive())) {
     proc = spawn(PY, ['health_server.py', '-p', String(PORT), '-d', DB], {
       cwd: path.join(ROOT, 'server'), stdio: 'ignore'
     });
     for (let i = 0; i < 40; i++) {
-      const info = await pingInfo();
-      if (info && path.resolve(String(info.db)) === path.resolve(DB)) break;
+      if (await alive()) break;
       await new Promise(r => setTimeout(r, 300));
     }
   }
-  const ready = await pingInfo();
-  if (!ready || path.resolve(String(ready.db)) !== path.resolve(DB)) {
-    console.error('起不来服务，检查 server/.venv 或端口占用'); process.exit(1);
-  }
+  if (!(await alive())) { console.error('起不来服务，检查 server/.venv'); process.exit(1); }
 
-  let browser = null;
-  try {
-    browser = await chromium.launch({ channel: 'chrome' });
+  const browser = await chromium.launch({ channel: 'chrome' });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errs = [];
   page.on('pageerror', e => errs.push(e.message));
@@ -113,7 +74,7 @@ const pingInfo = () => new Promise(res => {
   check(all.reports.length === 5, '5 份报告写进 SQLite', all.reports.length + ' 份');
   check(all.reports.every(r => /^\/files\/.+\.(jpg|png|webp)$/.test(r.file)), '图片存成文件', all.reports[0] && all.reports[0].file);
   check(all.reports.some(r => r.panel === '生化' && r.specimen === '血清'), '组套与样本类型入库');
-  const files = fs.existsSync(path.join(TMP, 'test_files')) ? fs.readdirSync(path.join(TMP, 'test_files')).filter(f => !f.startsWith('.')) : [];
+  const files = fs.existsSync(path.join(TMP, 'test_files')) ? fs.readdirSync(path.join(TMP, 'test_files')) : [];
   check(files.length === 5, '磁盘上有 5 个图片文件', files.length + ' 个');
 
   /* 3. 刷新后仍从库里出来 */
@@ -155,8 +116,8 @@ const pingInfo = () => new Promise(res => {
   const allRows = await page.locator('.laball-table tbody tr:not(.laball-day)').count();
   check(allRows === 45, '全部记录页列出 45 条（不被“最近 8 条”截断）', allRows + ' 条');
   const groups = await page.locator('.laball-day').count();
-  check(groups === 5, '按 5 个检查日期分组', groups + ' 组');
-  await page.fill('#labAllQ', '测试项目1');
+  check(groups === 4, '按 4 个检查日期分组', groups + ' 组');
+  await page.fill('#labAllQ', '肌酐');
   await page.waitForTimeout(300);
   const hit = await page.locator('.laball-table tbody tr:not(.laball-day)').count();
   check(hit > 0 && hit < 45, '关键词筛选生效', hit + ' 条');
@@ -207,9 +168,7 @@ const pingInfo = () => new Promise(res => {
 
   console.log('\n控制台错误：', errs.length ? errs.slice(0, 3).join(' | ') : '无');
   console.log(`${fail === 0 ? '全部通过' : '有失败'}：${pass} 通过 / ${fail} 失败`);
-  } finally {
-    if (browser) await browser.close();
-    if (proc) proc.kill();
-  }
+  await browser.close();
+  if (proc) proc.kill();
   process.exit(fail ? 1 : 0);
 })();

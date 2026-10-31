@@ -1,6 +1,6 @@
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-root=Path(__file__).resolve().parents[2]/'data'/'影像'/'ct_analysis'
+root=Path(__file__).resolve().parents[2]/'data'/'右脚踝'/'ct_analysis'
 canvas=Image.new('RGB',(1320,600),(18,22,28))
 d=ImageDraw.Draw(canvas)
 font=ImageFont.truetype('C:/Windows/Fonts/msyh.ttc',23)

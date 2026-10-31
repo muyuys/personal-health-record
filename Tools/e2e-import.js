@@ -5,7 +5,7 @@ const os = require('os');
 const { chromium } = require('playwright');
 
 const shot = n => path.join(os.tmpdir(), `health-import-${n}.png`);
-const URL = 'file:///' + path.join(__dirname, '..', 'index.html').replace(/\\/g, '/') + '?offline=1';
+const URL = 'file:///F:/Health/index.html?offline=1';
 
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome' });

@@ -245,7 +245,7 @@ function symptomFormHTML(rec, presetDate) {
     <form id="symForm" data-id="${rec ? esc(rec.id) : ''}">
       <div class="form-grid">
         <div class="field"><label>日期 <b>*</b></label><input type="date" name="date" value="${esc(r.date)}" required></div>
-        <div class="field"><label>部位 / 主题 <b>*</b></label><input name="part" list="symParts" maxlength="20" value="${esc(r.part || '')}" placeholder="如 头面、腰背、四肢" required><datalist id="symParts">${SYMPTOM_PARTS.map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
+        <div class="field"><label>部位 / 主题 <b>*</b></label><input name="part" list="symParts" maxlength="20" value="${esc(r.part || '')}" placeholder="如 眼睛、鼻、右踝" required><datalist id="symParts">${SYMPTOM_PARTS.map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
         <div class="field"><label>程度（1–10）</label><input type="number" name="severity" min="1" max="10" step="1" value="${sev}" placeholder="1 很轻 · 10 难以忍受"></div>
         <div class="field"><label>诱因</label><input name="trigger" maxlength="60" value="${esc(r.trigger || '')}" placeholder="如 长时间看屏、花粉、走路多"></div>
         <div class="field wide"><label>备注</label><input name="note" maxlength="200" value="${esc(r.note || '')}" placeholder="如 用药后缓解、持续约 2 小时"></div>
@@ -442,7 +442,7 @@ function openSearch(q = '') {
       ? (list.length ? list.map(x => `<button class="sr-item" data-act="${x.act}" data-id="${esc(x.id || '')}" data-to="${esc(x.to || '')}" data-k="${esc(x.k || '')}">
             <span class="badge">${esc(x.g)}</span><span>${esc(x.t)}</span><span class="sr-sub">${esc(x.s).slice(0, 46)}</span></button>`).join('')
         : '<div class="empty">没有匹配结果</div>')
-      : '<p class="hint" style="padding:6px 4px">输入关键词，例如：指标名、药品名、症状、体重。</p>';
+      : '<p class="hint" style="padding:6px 4px">输入关键词，例如：右踝、肌酐、海露、晨重。</p>';
   };
   input.addEventListener('input', draw);
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { const f = $('#sr .sr-item'); if (f) f.click(); } });
@@ -799,7 +799,10 @@ let imp = null;
 /* 只做「认字」，不做字段判断。识别结果进 textarea，仍走人工核对那一步。
    服务地址见文件顶部的 OCR_URL（服务托管时与页面同源）。 */
 function ocrCall(path, opts = {}, ms = 20000) {
-  return storage.ocr(path, opts, ms);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  return fetch(OCR_URL + path, Object.assign({ signal: ctl.signal }, opts))
+    .finally(() => clearTimeout(timer));
 }
 
 async function ocrPing() {

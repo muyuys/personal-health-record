@@ -55,7 +55,7 @@ const LS_TODOS = 'personal-health-todo-items-v1';
 /* 提醒相关：上次导出备份的时间（纪元秒，离线模式用）、当天已忽略的提醒 key 映射 */
 const LS_LAST_EXPORT = 'personal-health-last-export-v1';
 const LS_REMIND_DISMISS = 'personal-health-remind-dismiss-v1';
-const CATS = HealthDomain.CATS;
+const CATS = ['血常规', '肝功能', '肾功能', '其他'];
 const PRESETS = {
   '血常规': ['白细胞计数', '红细胞计数', '血红蛋白', '血小板计数'],
   '肝功能': ['丙氨酸氨基转移酶（ALT）', '天门冬氨酸氨基转移酶（AST）', '总胆红素', '白蛋白'],
@@ -81,7 +81,7 @@ let visits = [];
 let medications = [];
 /* 生命体征：血压 / 心率 / 体温 / 血氧 / 血糖，独立一张表，按日记录、可看趋势。 */
 let vitals = [];
-/* 症状日记：按日记录主观不适，独立一张表，可按部位筛选回看。 */
+/* 症状日记：按日记录主观不适（干眼、鼻炎、踝痛等），独立一张表，可按部位筛选回看。 */
 let symptoms = [];
 /* 减重执行闭环：dietDays = 每日记录（饮食/晨重/摄入/完整度），dietWeeks = 每周复盘。
    空白字段一律保持空，不补 0；「未记录」与「未吃」分开。 */
@@ -110,8 +110,6 @@ let storageOK = true;
    storeMode 决定数据写哪儿：server = SQLite，local = 浏览器 localStorage（降级） */
 const OCR_URL = location.protocol === 'file:' ? 'http://127.0.0.1:8765' : '';
 const API = OCR_URL + '/api';
-/* 唯一的 I/O 适配器。此文件负责应用状态，storage 负责浏览器/网络细节。 */
-const storage = HealthStorage.createClient({ apiBase: API, ocrBase: OCR_URL });
 let storeMode = 'local';
 /* 上次导出备份的状态（{lastExportAt, daysSince, due}）：服务模式来自 /api/all 的 export 字段，
    离线模式由 localStorage 推算。仅供首页「未备份」提醒使用，不参与其它业务判断。 */
@@ -125,8 +123,82 @@ const ui = {
   /* 全部记录页的筛选条件：只存在内存里，刷新后回到「全部」 */
   labAll: { q: '', cat: '', rep: '', range: 'all' },
   /* 就诊摘要导出：选某次就诊或某时间段（内存态，不落库） */
-  summary: { visit: '', from: '', to: '' }
+  summary: { visit: '', from: '', to: '' },
+  /* 大列表分页：每页条数（内存态，可切换 20/50/100） */
+  pageSize: 20,
+  /* 各列表当前页码（从 1 起） */
+  pager: { weight: 1, sleep: 1, labs: 1 },
+  /* 明细「记录明细」折叠面板的展开状态（内存态，刷新回默认折叠）。
+     翻页会整页重渲染，这里记下已交互的面板，重渲染后保持展开。 */
+  openDetails: {}
 };
+
+/* 默认每页条数可选项 */
+const PAGE_SIZES = [20, 50, 100];
+
+/* 分页切片：返回 { page, pages, rows, total, start, end }，page 已夹取到合法范围 */
+function paginate(list, key, size) {
+  size = size || ui.pageSize || 20;
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / size));
+  let page = Math.floor(ui.pager[key] || 1);
+  if (page < 1) page = 1;
+  if (page > pages) page = pages;
+  ui.pager[key] = page;
+  const start = (page - 1) * size;
+  const end = Math.min(start + size, total);
+  return { page, pages, rows: list.slice(start, end), total, start, end };
+}
+
+/* 分页控件 HTML：上一页 / 页码 / 下一页 + 每页条数切换 + 「第 x–y / 共 n 条」 */
+function pagerHTML(key, pg) {
+  if (!pg || pg.total <= 0) return '';
+  if (pg.pages <= 1) {
+    return `<div class="pager"><span class="pager-info">共 ${pg.total} 条</span></div>`;
+  }
+  const btn = (p, label, dis) => `<button class="pager-btn${dis ? ' is-dis' : ''}"${dis ? ' disabled' : ''} data-act="page" data-key="${key}" data-page="${p}">${label}</button>`;
+  // 页码窗口：当前页前后各 2 页
+  const nums = [];
+  const lo = Math.max(1, pg.page - 2), hi = Math.min(pg.pages, pg.page + 2);
+  if (lo > 1) { nums.push(1); if (lo > 2) nums.push('…'); }
+  for (let i = lo; i <= hi; i++) nums.push(i);
+  if (hi < pg.pages) { if (hi < pg.pages - 1) nums.push('…'); nums.push(pg.pages); }
+  const numBtns = nums.map(n => n === '…'
+    ? '<span class="pager-gap">…</span>'
+    : `<button class="pager-btn pager-num${n === pg.page ? ' is-on' : ''}" data-act="page" data-key="${key}" data-page="${n}">${n}</button>`
+  ).join('');
+  const sizeBtns = PAGE_SIZES.map(s => `<button class="pager-btn pager-size${s === ui.pageSize ? ' is-on' : ''}" data-act="page-size" data-size="${s}">${s}</button>`).join('');
+  return `<div class="pager">
+    <span class="pager-info">第 ${pg.start + 1}–${pg.end} 条 / 共 ${pg.total} 条</span>
+    <span class="pager-ctl">${btn(pg.page - 1, '上一页', pg.page <= 1)}${numBtns}${btn(pg.page + 1, '下一页', pg.page >= pg.pages)}</span>
+    <span class="pager-size-ctl">每页 ${sizeBtns}</span>
+  </div>`;
+}
+
+/* 「记录明细」折叠面板：默认折叠，展开后显示统计条 / 表格 / 分页。
+   key 用于记住展开状态（ui.openDetails[key]），summary 内放标题 + 条数 + 展开提示。
+   body 为已生成的内部 HTML（统计条、表格、分页均放进去，展开才可见）。 */
+function detailFold(key, title, count, body) {
+  const open = !!ui.openDetails[key];
+  const countText = count != null ? `<span class="df-count">${esc(String(count))} 条</span>` : '';
+  return `<details class="detail-fold" data-fold="${esc(key)}"${open ? ' open' : ''}>
+    <summary class="df-sum">
+      <span class="df-title"><span class="df-chev" aria-hidden="true"></span>${esc(title)}</span>
+      ${countText}
+      <span class="df-hint">展开查看</span>
+    </summary>
+    <div class="df-body">${body}</div>
+  </details>`;
+}
+
+/* 统计条 HTML：把一组数值做 min/max/avg/首尾日期 的汇总展示 */
+function statsBar(items) {
+  const cells = items.filter(Boolean);
+  if (!cells.length) return '';
+  return `<div class="stats-bar">${cells.map(c =>
+    `<div class="stats-cell"><small>${esc(c.label)}</small><b>${c.value}</b>${c.sub ? `<i>${esc(c.sub)}</i>` : ''}</div>`
+  ).join('')}</div>`;
+}
 
 /* 身体围度：胸围 / 腰围 / 臀围，单位 cm。
    三项都允许空（只量了腰围也能记），但一条记录至少要有一项。
@@ -165,7 +237,11 @@ function weightMetricSeries(k) {
     .map(w => ({ date: w.date, value: weightMetricVal(w, k) }));
 }
 
-const numOrNull = HealthDomain.numOrNull;
+function numOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 function validBody(x) {
   if (!x || typeof x.id !== 'string') return false;
@@ -247,8 +323,23 @@ const VITAL_METRICS = [
   { k: 'glucose', label: '血糖', unit: 'mmol/L', dec: 1 }
 ];
 const GLUCOSE_TAGS = [['fasting', '空腹'], ['post2h', '餐后 2 小时'], ['random', '随机 / 其他']];
-/* 血糖等体征的区间与异常判断由纯领域模块统一提供。 */
-const { VITAL_RANGES, vitalRange, vitalFlag } = HealthDomain;
+const VITAL_RANGES = {
+  systolic: [90, 139], diastolic: [60, 89], pulse: [60, 100],
+  temperature: [36.0, 37.3], spo2: [95, 100], glucose: [3.9, 6.1]
+};
+/* 血糖的参考区间随测量时机变化：非空腹按餐后 2 小时的上限 */
+function vitalRange(k, rec) {
+  if (k === 'glucose' && rec && rec.glucoseTag && rec.glucoseTag !== 'fasting') return [3.9, 7.8];
+  return VITAL_RANGES[k] || [null, null];
+}
+function vitalFlag(k, v, rec) {
+  if (!Number.isFinite(v)) return '';
+  const r = vitalRange(k, rec);
+  if (r[0] == null) return '';
+  if (v > r[1]) return 'H';
+  if (v < r[0]) return 'L';
+  return 'N';
+}
 function validVital(x) {
   if (!x || typeof x.id !== 'string') return false;
   if (typeof x.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(x.date)) return false;
@@ -277,9 +368,9 @@ function latestVitalOf(k) {
   return rows.length ? rows[rows.length - 1] : null;
 }
 
-/* 症状日记：按日记录主观不适，不为每个病单独建页。
+/* 症状日记：按日记录主观不适（干眼、鼻炎、踝痛等），不为每个病单独建页。
    part = 部位 / 主题，是筛选维度；severity = 主观程度 1–10；trigger = 诱因；note = 备注。 */
-const SYMPTOM_PARTS = ['头面', '眼', '耳鼻喉', '口腔', '颈肩', '胸腹', '腰背', '四肢', '皮肤', '其他'];
+const SYMPTOM_PARTS = ['眼睛', '鼻', '右踝', '膝', '腰', '头', '咽', '皮肤', '胃肠', '其他'];
 const SEVERITY_LEVELS = [[1, 3, '轻', 'green'], [4, 6, '中', 'amber'], [7, 10, '重', 'warn']];
 function severityMeta(n) {
   const v = Number(n);
@@ -508,6 +599,9 @@ function normMedication(x) {
     purpose: String(x.purpose || '').trim().slice(0, 120),
     status: ['active', 'stopped', 'unknown'].includes(x.status) ? x.status : 'active',
     note: String(x.note || '').trim().slice(0, 300),
+    infoDate: String(x.infoDate || '').trim().slice(0, 20),
+    sourceRef: String(x.sourceRef || '').trim().slice(0, 200),
+    toVerify: String(x.toVerify || '').trim().slice(0, 300),
     visitId: String(x.visitId || ''),
     createdAt: Number(x.createdAt) || Date.now()
   };
@@ -566,7 +660,7 @@ function reportShort(t) {
 async function loadOriginals() {
   if (storeMode !== 'server') { originals = []; originalsLoaded = true; return; }
   try {
-    const r = await storage.get('/originals', { cache: 'no-store' });
+    const r = await fetch(API + '/originals', { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     originals = Array.isArray(j.files) ? j.files : [];
@@ -618,7 +712,7 @@ function viewOriginal(path, name) {
 
 function loadAll() {
   try {
-    const raw = storage.readText(LS_LABS);
+    const raw = localStorage.getItem(LS_LABS);
     if (raw !== null) {
       const p = JSON.parse(raw);
       if (!Array.isArray(p) || !p.every(validLab)) throw new Error('bad labs');
@@ -628,7 +722,7 @@ function loadAll() {
     storageOK = false;
   }
   try {
-    const raw = storage.readText(LS_STATE);
+    const raw = localStorage.getItem(LS_STATE);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p.weights)) {
@@ -640,14 +734,14 @@ function loadAll() {
     }
   } catch (e) { /* 忽略损坏的本机记录 */ }
   try {
-    const raw = storage.readText(LS_REPORTS);
+    const raw = localStorage.getItem(LS_REPORTS);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) reports = p.filter(validReport).map(normReport);
     }
   } catch (e) { /* 忽略损坏的报告索引 */ }
   try {
-    const raw = storage.readText(LS_HISTORY);
+    const raw = localStorage.getItem(LS_HISTORY);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p.allergies)) allergies = p.allergies.filter(validAllergy).map(normAllergy);
@@ -658,63 +752,72 @@ function loadAll() {
     }
   } catch (e) { /* 忽略损坏的结构化病史 */ }
   try {
-    const raw = storage.readText(LS_VITALS);
+    const raw = localStorage.getItem(LS_VITALS);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) vitals = p.filter(validVital).map(normVital);
     }
   } catch (e) { /* 忽略损坏的体征记录 */ }
   try {
-    const raw = storage.readText(LS_SYMPTOMS);
+    const raw = localStorage.getItem(LS_SYMPTOMS);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) symptoms = p.filter(validSymptom).map(normSymptom);
     }
   } catch (e) { /* 忽略损坏的症状记录 */ }
   try {
-    const raw = storage.readText(LS_DIET_DAYS);
+    const raw = localStorage.getItem(LS_DIET_DAYS);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) dietDays = p.filter(validDietDay).map(normDietDay);
     }
   } catch (e) { /* 忽略损坏的每日记录 */ }
   try {
-    const raw = storage.readText(LS_DIET_WEEKS);
+    const raw = localStorage.getItem(LS_DIET_WEEKS);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) dietWeeks = p.filter(validDietWeek).map(normDietWeek);
     }
   } catch (e) { /* 忽略损坏的每周复盘 */ }
   try {
-    const raw = storage.readText(LS_SLEEP);
+    const raw = localStorage.getItem(LS_SLEEP);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) sleepLogs = p.filter(validSleepLog).map(normSleepLog);
     }
   } catch (e) { /* 忽略损坏的睡眠记录 */ }
   try {
-    const raw = storage.readText(LS_ISSUE_STATUS);
+    const raw = localStorage.getItem(LS_ISSUE_STATUS);
     if (raw) {
       const p = JSON.parse(raw);
       if (p && typeof p === 'object') issueStatus = p;
     }
   } catch (e) { /* 忽略损坏的问题状态覆盖 */ }
   try {
-    const raw = storage.readText(LS_TODOS);
+    const raw = localStorage.getItem(LS_TODOS);
     if (raw) {
       const p = JSON.parse(raw);
       if (Array.isArray(p)) todoItems = p.filter(validTodoItem).map(normTodoItem);
     }
   } catch (e) { /* 忽略损坏的自建待办 */ }
-  /* 空档案保持空：不注入任何示例或种子体重，避免把静态摘要误当成真实记录。 */
+  if (!state.weights.length) {
+    state.weights = [{ id: 'seed-20261027', date: ARCHIVE.weight.startDate, kg: ARCHIVE.weight.start, tag: 'reported', waist: null, note: '本人自报，非晨重' }];
+  }
 }
 
 /* 数据写哪儿：连上本机服务就写 SQLite，连不上才退回浏览器。
    两条路径不交叉写，避免「一半在库、一半在浏览器」的分裂状态。 */
 function pushJSON(path, body) {
   if (storeMode !== 'server') return;
-  /* 所有写入按用户操作顺序发送；队列失败只影响当前请求，不阻塞后续重试。 */
-  storage.putQueued(path, body).then(() => {
+  fetch(API + path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(j => {
+    if (!j || !j.ok) throw new Error((j && j.error) || '写入失败');
     if (syncBad) { syncBad = false; toast('已重新连上本机数据库'); }
   }).catch(() => {
     if (!syncBad) {
@@ -727,14 +830,17 @@ function pushJSON(path, body) {
 /* 连本机服务取数据。连不上就保持浏览器存储模式（离线也能看，但会明确提示）。 */
 let pendingMigrate = false;
 /* ?offline=1 强制只用浏览器存储：自动化测试与临时排查用，避免把测试数据写进真库 */
-const FORCE_LOCAL = location.protocol === 'file:' || /[?&]offline=1/.test(location.search);
+const FORCE_LOCAL = /[?&]offline=1/.test(location.search);
 async function bootStore() {
   if (FORCE_LOCAL) { storeMode = 'local'; return false; }
   try {
-    const r = await storage.get('/all', { cache: 'no-store' }, 2500);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2500);
+    const r = await fetch(API + '/all', { cache: 'no-store', signal: ctl.signal })
+      .finally(() => clearTimeout(timer));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
-    const localLabs = (storage.readText(LS_LABS) || '').length;
+    const localLabs = (localStorage.getItem(LS_LABS) || '').length;
     labs = (d.labs || []).filter(validLab);
     reports = (d.reports || []).filter(validReport).map(normReport);
     if (Array.isArray(d.weights) && d.weights.length) {
@@ -772,14 +878,14 @@ async function migrateLocalToServer() {
   if (storeMode !== 'server') { toast('本机数据库没连上'); return; }
   let lo = [], lr = [], ls = null;
   try {
-    lo = JSON.parse(storage.readText(LS_LABS) || '[]').filter(validLab);
-    lr = JSON.parse(storage.readText(LS_REPORTS) || '[]').filter(validReport).map(normReport);
-    ls = JSON.parse(storage.readText(LS_STATE) || 'null');
+    lo = JSON.parse(localStorage.getItem(LS_LABS) || '[]').filter(validLab);
+    lr = JSON.parse(localStorage.getItem(LS_REPORTS) || '[]').filter(validReport).map(normReport);
+    ls = JSON.parse(localStorage.getItem(LS_STATE) || 'null');
   } catch (e) {
     toast('浏览器里的数据读不出来'); return;
   }
   let lh = null;
-  try { lh = JSON.parse(storage.readText(LS_HISTORY) || 'null'); } catch (e) { }
+  try { lh = JSON.parse(localStorage.getItem(LS_HISTORY) || 'null'); } catch (e) { }
   if (!lo.length && !lr.length) { toast('浏览器里没有可搬的数据'); return; }
   const total = labs.length;
   if (!confirm(`浏览器里还有 ${lo.length} 条检验记录、${lr.length} 份报告。\n合并进本机数据库（现有 ${total} 条）？同一天同项目同单位的以浏览器里的为准，不会翻倍。`)) return;
@@ -792,7 +898,9 @@ async function migrateLocalToServer() {
   const bm = new Map(state.body.map(b => [b.id, b]));
   (ls && Array.isArray(ls.body) ? ls.body.filter(validBody).map(normBody) : []).forEach(b => bm.set(b.id, b));
   try {
-    const put = (p, body) => storage.put(p, body);
+    const put = (p, body) => fetch(API + p, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(r => { if (!r.ok) throw new Error(r.status); });
     await put('/reports', rep.list);
     await put('/labs', mergedLabs);
     await put('/state', {
@@ -827,20 +935,20 @@ function persistLabs(next) {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/labs', next); return true; }
   try {
-    storage.writeText(LS_LABS, JSON.stringify(next));
+    localStorage.setItem(LS_LABS, JSON.stringify(next));
     return true;
   } catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 function persistState() {
   state.savedAt = Date.now();
   if (storeMode === 'server') { pushJSON('/state', { weights: state.weights, done: state.done, body: state.body }); return true; }
-  try { storage.writeText(LS_STATE, JSON.stringify(state)); return true; }
+  try { localStorage.setItem(LS_STATE, JSON.stringify(state)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 function persistReports(next) {
   reports = next;
   if (storeMode === 'server') { pushJSON('/reports', next); return true; }
-  try { storage.writeText(LS_REPORTS, JSON.stringify(next)); return true; }
+  try { localStorage.setItem(LS_REPORTS, JSON.stringify(next)); return true; }
   catch (e) { toast('保存失败：存储空间不足，报告图片可能太大'); return false; }
 }
 /* 过敏 / 家族史 / 手术住院 / 就诊 / 用药：整组写回。服务模式走 /api/history。 */
@@ -848,70 +956,70 @@ function persistHistory() {
   touchSaved();
   const payload = { allergies, familyHistory, surgeries, visits, medications };
   if (storeMode === 'server') { pushJSON('/history', payload); return true; }
-  try { storage.writeText(LS_HISTORY, JSON.stringify(payload)); return true; }
+  try { localStorage.setItem(LS_HISTORY, JSON.stringify(payload)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 生命体征：整表写回。服务模式走 /api/vitals。 */
 function persistVitals() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/vitals', vitals); return true; }
-  try { storage.writeText(LS_VITALS, JSON.stringify(vitals)); return true; }
+  try { localStorage.setItem(LS_VITALS, JSON.stringify(vitals)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 function persistSymptoms() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/symptoms', symptoms); return true; }
-  try { storage.writeText(LS_SYMPTOMS, JSON.stringify(symptoms)); return true; }
+  try { localStorage.setItem(LS_SYMPTOMS, JSON.stringify(symptoms)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 减重每日记录：整表写回。服务模式走 /api/diet-days。 */
 function persistDietDays() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/diet-days', dietDays); return true; }
-  try { storage.writeText(LS_DIET_DAYS, JSON.stringify(dietDays)); return true; }
+  try { localStorage.setItem(LS_DIET_DAYS, JSON.stringify(dietDays)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 减重每周复盘：整表写回。服务模式走 /api/diet-weeks。 */
 function persistDietWeeks() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/diet-weeks', dietWeeks); return true; }
-  try { storage.writeText(LS_DIET_WEEKS, JSON.stringify(dietWeeks)); return true; }
+  try { localStorage.setItem(LS_DIET_WEEKS, JSON.stringify(dietWeeks)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 睡眠记录：整表写回。服务模式走 /api/sleep-logs。 */
 function persistSleepLogs() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/sleep-logs', sleepLogs); return true; }
-  try { storage.writeText(LS_SLEEP, JSON.stringify(sleepLogs)); return true; }
+  try { localStorage.setItem(LS_SLEEP, JSON.stringify(sleepLogs)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 健康问题状态覆盖：整表写回。服务模式走 /api/issue-status。 */
 function persistIssueStatus() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/issue-status', { issueStatus }); return true; }
-  try { storage.writeText(LS_ISSUE_STATUS, JSON.stringify(issueStatus)); return true; }
+  try { localStorage.setItem(LS_ISSUE_STATUS, JSON.stringify(issueStatus)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 用户新增的复诊待办：整表写回。服务模式走 /api/todos。 */
 function persistTodoItems() {
   touchSaved();
   if (storeMode === 'server') { pushJSON('/todos', todoItems); return true; }
-  try { storage.writeText(LS_TODOS, JSON.stringify(todoItems)); return true; }
+  try { localStorage.setItem(LS_TODOS, JSON.stringify(todoItems)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 /* 记一次写入时间，供「数据存储」卡显示；写失败不影响主流程 */
 function touchSaved() {
   state.savedAt = Date.now();
   if (storeMode === 'server') return;
-  try { storage.writeText(LS_STATE, JSON.stringify(state)); } catch (e) { }
+  try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch (e) { }
 }
 /* 本机存储的计量信息：只用于展示，不参与业务判断 */
 function storeInfo() {
   let bytes = 0;
   try {
-    const a = storage.readText(LS_LABS) || '';
-    const b = storage.readText(LS_STATE) || '';
-    const c = storage.readText(LS_REPORTS) || '';
+    const a = localStorage.getItem(LS_LABS) || '';
+    const b = localStorage.getItem(LS_STATE) || '';
+    const c = localStorage.getItem(LS_REPORTS) || '';
     bytes = (new Blob([a + b + c])).size;
   } catch (e) { }
   const size = bytes < 1024 ? bytes + ' B'

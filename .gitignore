@@ -29,8 +29,14 @@
 /Tools/cloud-dicom-downloader/
 
 # --- 个人健康数据 / 诊断 / 检查记录：绝不进 Git（隐私）---
-# 已迁入 private_data/，整目录忽略
-/private_data/
+# 已迁入 private_data/。注意：不能整目录 /private_data/ 忽略，
+# 否则 _meta（结构配置）无法越过被忽略的父目录放行。
+# 故改为放行目录骨架、忽略其中所有个人数据内容：
+!/private_data/
+/private_data/*
+# 放行结构配置与模板（不含个人数据，可入版本库）
+!/private_data/_meta/
+!/private_data/_meta/**
 
 # --- 文档：docs/ 下只放行文本与页面 ---
 !/docs/
@@ -51,16 +57,8 @@
 
 # --- 根目录说明 ---
 !/README.md
+!/README.html
 !/启动健康档案.bat
-!/package.json
-!/package-lock.json
-
-# 文档 HTML 为本地生成物，可能由私有 Markdown 派生，一律不进 Git
-/README.html
-/docs/**/*.html
-
-# 可选开发依赖（仅文档构建 / e2e；应用运行时不需要）
-node_modules/
 
 # --- 杂项 ---
 *.pyc

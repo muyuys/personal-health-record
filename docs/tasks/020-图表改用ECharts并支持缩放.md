@@ -1,0 +1,21 @@
+# 020 图表改用 ECharts + 支持范围缩放
+
+- 优先级：P1
+- 问题：现有图表为手写 SVG（`paintChart` / `paintBodyChart`），无交互缩放，样式与交互都要自己维护。
+- 目标：把所有趋势图改为 **ECharts** 渲染，并支持 **范围选择（dataZoom 滑块拖拽缩放）**。
+- 范围：
+  - 本地引入 echarts（`assets/vendor/echarts.min.js`，勿用 CDN，保证 file:// 离线可看）。
+  - index.html 在 app 脚本前加载 echarts。
+  - 新增统一封装 `js/app.chart.js`（`echartsChart(host, {dates, series, ...})`），集中处理：折线、参考区间 shaded band（markArea）、目标线（markLine）、越界点标红、tooltip、`dataZoom`（inside + slider）、响应式 resize、空数据占位。
+  - 替换所有 `paintChart(...)` / `paintBodyChart(...)` 调用点：
+    - `js/app.views.health.js` 检验指标页 `#chartBox`（含 demo 数据）、`#labsChart` 等；
+    - `js/app.views.body.js` 体重 `#weightChart`（带目标线）、身体围度 `#bodyChart`（多序列）、成分 `#compChart`、减重页 `#dietWeightChart`/`#dietKcalChart`；
+    - 生命体征 `#vitalsChart`；
+    - 保留原有高度/单位/参考区间语义。
+  - 移除或保留旧 SVG 函数由实现者定，但**不得**留下死代码报错。
+- 验收：
+  - 所有图表以 ECharts canvas 渲染，视觉与现有配色一致（`--pine #2F6B57` 等）。
+  - 每张图底部有 dataZoom 滑块，可拖拽/滚轮缩放某区间；tooltip 显示日期+数值+单位。
+  - 参考区间以浅色带显示、目标线虚线显示；越界/最新点体现红色。
+  - `node --check` 全部 JS 通过；页面 200；`/assets/vendor/echarts.min.js` 200。
+- 关联：`docs/tasks/019`、`index.html`、`assets/styles.css`。
