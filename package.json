@@ -1,0 +1,24 @@
+{
+  "name": "personal-health-record",
+  "version": "1.0.0",
+  "private": true,
+  "description": "单机个人健康档案。应用本身（index.html + js/ + assets/ + Python 服务）零 npm 依赖；此处仅声明文档构建与端到端测试的可选开发依赖。",
+  "scripts": {
+    "test": "npm run test:parse && npm run test:domain && npm run test:storage && npm run test:server",
+    "test:parse": "node Tools/test-parse.cjs",
+    "test:domain": "node Tools/test-domain.cjs",
+    "test:storage": "node Tools/test-storage.cjs",
+    "test:server": "python Tools/test_server.py",
+    "test:links": "python Tools/检查文档链接.py",
+    "build:docs": "node Tools/build-docs.cjs",
+    "check:docs": "node Tools/build-docs.cjs --check",
+    "e2e:import": "node Tools/e2e-import.js",
+    "e2e:report": "node Tools/e2e-report.js",
+    "e2e:ocr": "node Tools/e2e-ocr.js",
+    "e2e:server": "node Tools/e2e-server.js"
+  },
+  "devDependencies": {
+    "marked": "^12.0.2",
+    "playwright": "^1.49.1"
+  }
+}

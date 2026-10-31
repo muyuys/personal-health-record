@@ -1,0 +1,70 @@
+# =====================================================================
+#  健康档案 · 个人仓库
+#  原则：只把「代码 / 文档」纳入版本控制；个人健康数据 / 影像 / 依赖 一律不进 Git。
+#  采用「默认忽略全部 → 逐项放行」的白名单写法，避免隐私文件误入。
+#
+#  2026-10-30 目录调整后的结构：
+#    docs/   文档（.md + 生成的 .html），可进 Git
+#    data/   图片、CSV、DICOM、报告原件照片，一律不进 Git
+#    assets/ server/ Tools/  应用与脚本
+# =====================================================================
+
+# --- 默认：忽略根目录下的所有条目 ---
+/*
+!/.gitignore
+
+# --- 应用代码 ---
+!/index.html
+!/assets/
+!/js/
+!/server/
+!/Tools/
+
+# 依赖与缓存
+/server/.venv/
+/server/__pycache__/
+/Tools/影像分析/runtime/
+
+# 第三方工具源码（按约定不纳入）
+/Tools/cloud-dicom-downloader/
+
+# --- 个人健康数据 / 诊断 / 检查记录：绝不进 Git（隐私）---
+# 已迁入 private_data/，整目录忽略
+/private_data/
+
+# --- 文档：docs/ 下只放行文本与页面 ---
+!/docs/
+# （历史遗留：若这些目录残留在 docs/ 下也不进 Git）
+/docs/健康档案/
+/docs/主题/
+/docs/减重记录/
+/docs/**/*.png
+/docs/**/*.jpg
+/docs/**/*.jpeg
+/docs/**/*.csv
+/docs/**/*.pdf
+/docs/**/*.doc
+/docs/**/*.docx
+
+# --- 数据：整目录不进 Git ---
+/data/
+
+# --- 根目录说明 ---
+!/README.md
+!/启动健康档案.bat
+!/package.json
+!/package-lock.json
+
+# 文档 HTML 为本地生成物，可能由私有 Markdown 派生，一律不进 Git
+/README.html
+/docs/**/*.html
+
+# 可选开发依赖（仅文档构建 / e2e；应用运行时不需要）
+node_modules/
+
+# --- 杂项 ---
+*.pyc
+__pycache__/
+.DS_Store
+Thumbs.db
+*.log
