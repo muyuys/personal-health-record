@@ -126,6 +126,15 @@ cd F:/Health/server && .venv/Scripts/python.exe health_server.py
 
 ## 7. 已经做完的
 
+**UI 改版第一批（2026-11-02，commit 302e11d）——信息架构已换新，旧文档里「九个视图」的说法过时**
+- 一级导航收敛为五模块：**首页 / 就医记录 / 日常健康 / 健康主题 / 我的**（桌面侧栏 + 移动底栏，我的置底）；旧 hash（#/overview、#/timeline、#/visits、#/meds、#/todo、#/profile、#/weight、#/diet、#/vitals、#/symptoms、#/sleep、#/issues）全部静默重定向到新路由，`#/labs`、`#/labs-all`、`#/summary` 保留原路由
+- 新视图集中在 **`js/app.views.records.js`**（首页 / 就医记录 / 就诊详情 / 速记页 / 存报告页），`renderOverview`/`renderVisits` 已退役
+- 就诊速记与存报告是独立页（`#/new-visit`、`#/new-report`、`#/visit?id=&edit=1`），不再是弹层；自由记录正文写入 `visit.summary`（旧「就诊小结」语义），未新增数据库字段
+- 「按示例草稿新建」（visitSampleDraft）已整条删除
+- 视觉体系换为三层纸底 + 1px 描边（卡片无阴影）、墨色 5 档、状态色三元组；`:root` 里旧变量名以**别名**形式保留并指向新值，**第二批结束时必须全部删除**（027 §20）
+- 设计依据：`docs/tasks/026-新版UI视觉规范.md`、`docs/tasks/027-新版UI页面结构与交互规范.md`（改版前先读这两份，别凭旧印象改）
+- 待做：第二批（日常健康分段 / 健康主题 / 我的重排 + 删别名层）、028 数据模型卡（就诊↔多份资料、todoItem.visitId）
+
 **浏览与阅读**
 - 九个视图：总览、健康问题、检验指标、**全部检验记录**（`#/labs-all`，侧栏无入口，从检验页进）、检查时间线、用药记录、复诊待办、减重记录、个人资料
 - 只读内容（问题、主题、证据分级、时间线、用药）来自 `assets/data.js`，是 `docs/` 下 Markdown 的摘要
