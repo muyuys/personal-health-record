@@ -164,14 +164,28 @@ function baselineInfo() {
   if (s.length >= 7) return { ok: true, kg: avg(s.slice(-7).map(x => x.kg)), days: s.length };
   return { ok: false, kg: null, days: s.length, need: 7 - s.length };
 }
+/* 档案里没填目标或起点，就是「还没设」，不能拿 0 / NaN 冒充数字 */
+function wtTarget() {
+  const t = ARCHIVE.weight && ARCHIVE.weight.target;
+  return Number.isFinite(t) ? t : null;
+}
+function wtStart() {
+  const s = ARCHIVE.weight && ARCHIVE.weight.start;
+  return Number.isFinite(s) ? s : null;
+}
+/* 没有体重记录、没设起点/目标 → null（界面显示「—」，不显示 0% 或 NaN） */
 function progressPct() {
-  const cur = latestWeight().kg;
-  const { start, target } = ARCHIVE.weight;
-  return Math.min(100, Math.max(0, (start - cur) / (start - target) * 100));
+  const cur = latestWeight();
+  const start = wtStart();
+  const target = wtTarget();
+  if (!cur || start === null || target === null || start === target) return null;
+  return Math.min(100, Math.max(0, (start - cur.kg) / (start - target) * 100));
 }
 function bmiNow() {
-  const kg = latestWeight().kg;
-  return kg / Math.pow(ARCHIVE.profile.height / 100, 2);
+  const cur = latestWeight();
+  const h = ARCHIVE.profile && ARCHIVE.profile.height;
+  if (!cur || !Number.isFinite(h) || h <= 0) return null;
+  return cur.kg / Math.pow(h / 100, 2);
 }
 function waistRecord() {
   return weightList().slice().reverse().find(x => Number.isFinite(x.waist) && x.waist > 0) || null;
@@ -369,9 +383,14 @@ const SHORT = {
 function completeness() {
   const pf = profileFields();
   const okP = pf.filter(f => f.ok).length;
-  const iss = ARCHIVE.issues;
+  const iss = ARCHIVE.issues || [];
   const okI = iss.filter(i => !['pending', 'stub'].includes(i.status)).length;
-  const pct = Math.round((okP / pf.length * 0.4 + okI / iss.length * 0.4 + (labs.length ? 0.2 : 0)) * 100);
+  /* 档案为空时不能除零：没有可算的分母就当 0%，别出 NaN */
+  const pct = Math.round((
+    (pf.length ? okP / pf.length * 0.4 : 0) +
+    (iss.length ? okI / iss.length * 0.4 : 0) +
+    (labs.length ? 0.2 : 0)
+  ) * 100);
   const missAll = [
     ...pf.filter(f => !f.ok).map(f => SHORT[f.k] || f.k),
     ...iss.filter(i => ['pending', 'stub'].includes(i.status)).map(i => i.name)

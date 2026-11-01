@@ -14,9 +14,18 @@ function paintBodyChart(host, recs) {
     points: recs.filter(r => Number.isFinite(r[f.k])).map(r => ({ date: r.date, value: r[f.k] }))
   })).filter(s => s.points.length);
   if (!series.length) { host.innerHTML = ''; return; }
+  // 只有一天的数据画不出趋势，画了也是三个孤零零的点，不如直说还缺一次
+  const days = [...new Set(series.flatMap(s => s.points.map(p => p.date)))];
+  if (days.length < 2) {
+    host.style.height = '';
+    host.style.minHeight = '0';
+    host.innerHTML = `<div class="empty" style="padding:26px 12px;color:var(--muted-3);text-align:center">围度目前只有 ${esc(days[0])} 一次记录。再量一次，才看得出围度有没有跟着体重动。</div>`;
+    return;
+  }
   echartsChart(host, {
     series,
     unit: 'cm',
+    gapDays: 30,
     height: window.innerWidth < 700 ? 230 : 270
   });
 }
@@ -138,7 +147,7 @@ function compCardHTML() {
     </div>
     <div class="body-sum">${stats}</div>
     <div class="chart-box" id="compChart"></div>
-    <p class="hint" style="margin-top:10px">体脂秤指标受水分、进食影响大，只做同一个人前后对比，不设固定参考区间。数据缺项可留空，不影响体重本身的计算。</p>
+    <p class="hint" style="margin-top:10px">体脂秤指标受水分、进食影响大，只做同一个人前后对比，不设固定参考区间。<b style="font-weight:600">线断开的地方是那段时间没有记录，不是数值没变</b>；同一天称了多次只画当天最后一次，其余仍在下方明细里。数据缺项可留空，不影响体重本身的计算。</p>
   </section>`;
 }
 
@@ -152,6 +161,8 @@ function paintCompChart() {
   echartsChart(host, {
     series: [{ name: m.label, points: pts }],
     unit: m.unit || undefined,
+    gapDays: 10,
+    onePerDay: true,
     height: window.innerWidth < 700 ? 210 : 240
   });
 }
@@ -161,7 +172,9 @@ function renderWeight() {
   const cur = latestWeight();
   const bl = baselineInfo();
   const pct = progressPct();
-  const change = cur.kg - ARCHIVE.weight.start;
+  const target = wtTarget();
+  const startKg = wtStart();
+  const change = (cur && startKg !== null) ? cur.kg - startKg : null;
   const since7 = list.filter(w => (Date.now() - Date.parse(w.date + 'T00:00:00')) <= 7 * 864e5);
   const pg = paginate(list.slice().reverse(), 'weight');
 
@@ -174,27 +187,31 @@ function renderWeight() {
       <section class="hero">
         <div class="hero-left">
           <p class="hero-label">当前体重　WEIGHT</p>
-          <div class="hero-num"><b>${kg1(cur.kg)}</b><span>kg</span></div>
-          <p class="hero-sub">${esc(cur.date)} ${cur.tag === 'morning' ? '晨重' : cur.tag === 'device' ? '设备测量' : '自报，非标准晨重'}</p>
+          <div class="hero-num"><b>${cur ? kg1(cur.kg) : '—'}</b><span>kg</span></div>
+          <p class="hero-sub">${cur ? `${esc(cur.date)} ${cur.tag === 'morning' ? '晨重' : cur.tag === 'device' ? '设备测量' : '自报，非标准晨重'}` : '还没有称重记录'}</p>
         </div>
         <div class="hero-div"></div>
         <div class="hero-stats">
-          <div class="stat"><small>较起点</small><b>${change > 0 ? '+' : ''}${change.toFixed(1)}</b><i>kg</i></div>
+          <div class="stat"><small>较起点</small><b>${change === null ? '—' : (change > 0 ? '+' : '') + change.toFixed(1)}</b><i>${change === null ? '无起点' : 'kg'}</i></div>
           <div class="stat"><small>7 天晨重均值</small><b style="font-size:${bl.ok ? '22px' : '19px'}">${bl.ok ? kg1(bl.kg) : (bl.days ? '记录中' : '未建立')}</b><i>${bl.ok ? 'kg' : `还需 ${bl.need ?? 7} 天`}</i></div>
-          <div class="stat"><small>长期目标</small><b>${ARCHIVE.weight.target.toFixed(1)}</b><i>kg</i></div>
+          <div class="stat"><small>长期目标</small><b>${target === null ? '—' : target.toFixed(1)}</b><i>${target === null ? '未设' : 'kg'}</i></div>
           <div class="stat"><small>近 7 天记录</small><b>${since7.length}</b><i>次</i></div>
         </div>
         <div class="hero-progress">
-          <div class="hp-row"><span>减重进度</span><b>${Math.round(pct)} %</b></div>
-          <div class="track"><i style="width:${Math.max(pct, 2)}%"></i></div>
-          <div class="hp-scale"><span>${ARCHIVE.weight.start.toFixed(1)} kg</span><span>${ARCHIVE.weight.target.toFixed(1)} kg</span></div>
-          <p class="hp-note">距目标 ${(cur.kg - ARCHIVE.weight.target).toFixed(1)} kg　·　${ARCHIVE.weight.stageTarget}</p>
+          <div class="hp-row"><span>减重进度</span><b>${pct === null ? '—' : Math.round(pct) + ' %'}</b></div>
+          <div class="track"><i style="width:${pct === null ? 0 : Math.max(pct, 2)}%"></i></div>
+          <div class="hp-scale"><span>${startKg === null ? '起点未设' : startKg.toFixed(1) + ' kg'}</span><span>${target === null ? '目标未设' : target.toFixed(1) + ' kg'}</span></div>
+          <p class="hp-note">${cur
+            ? target === null ? '档案里还没设长期目标，进度暂不计算' : `距目标 ${(cur.kg - target).toFixed(1)} kg　·　${ARCHIVE.weight.stageTarget || ''}`
+            : '记下第一次体重后，这里会算距目标的距离与进度'}</p>
         </div>
       </section>
 
       <section class="card chart-card">
         <div class="chart-head">
-          <div class="chart-title"><h2>体重趋势</h2><p>共 ${list.length} 条记录　·　虚线为长期目标 ${ARCHIVE.weight.target.toFixed(1)} kg</p></div>
+          <div class="chart-title"><h2>体重趋势</h2><p>${list.length
+            ? `共 ${list.length} 条记录 / ${new Set(list.map(w => w.date)).size} 天　·　${target === null ? '未设长期目标' : '虚线为长期目标 ' + target.toFixed(1) + ' kg'}　·　线断开处为没有称重的时段`
+            : '还没有称重记录，记两次以上才画得出趋势'}</p></div>
           <span class="chip ${bl.ok ? 'green' : 'amber'} chip-sm">${bl.ok ? '已建立晨重基线' : '基线待建立'}</span>
         </div>
         <div class="chart-box" id="weightChart"></div>
@@ -237,12 +254,12 @@ function renderWeight() {
       <div class="grid-2">
         <section class="card">
           <div class="card-head"><h2>称重与记录规则</h2></div>
-          ${ARCHIVE.weight.rules.map((r, i) => `<div class="task"><div class="task-body"><p class="task-text" style="font-size:12px">${i + 1}. ${esc(r)}</p></div></div>`).join('')}
+          ${((ARCHIVE.weight && ARCHIVE.weight.rules) || []).map((r, i) => `<div class="task"><div class="task-body"><p class="task-text" style="font-size:12px">${i + 1}. ${esc(r)}</p></div></div>`).join('')}
         </section>
         <section class="card">
           <div class="card-head"><h2>当前计划</h2><span class="chip amber chip-sm">建议值</span></div>
-          <div class="tl-row"><time>摄入</time><p>${esc(ARCHIVE.weight.kcal)}</p></div>
-          <div class="tl-row"><time>阶段目标</time><p>${esc(ARCHIVE.weight.stageTarget)}</p></div>
+          <div class="tl-row"><time>摄入</time><p>${esc((ARCHIVE.weight && ARCHIVE.weight.kcal) || '未记录')}</p></div>
+          <div class="tl-row"><time>阶段目标</time><p>${esc((ARCHIVE.weight && ARCHIVE.weight.stageTarget) || '未设')}</p></div>
           <div class="tl-row"><time>复盘</time><p>2026-11-03 首次周复盘；11-10 至 11-17 复核趋势与热量预算</p></div>
           <p class="hint" style="margin-top:10px">以上为自行复盘计划，未设置提醒；体重变化需结合实际记录与身体反应调整。</p>
         </section>
@@ -251,13 +268,21 @@ function renderWeight() {
 
   const wc = $('#weightChart');
   if (wc) {
-    const pts = list.map(w => ({ date: w.date, value: w.kg }));
-    echartsChart(wc, {
-      series: [{ name: '体重', points: pts }],
-      unit: 'kg',
-      target: ARCHIVE.weight.target,
-      height: window.innerWidth < 700 ? 220 : 260
-    });
+    if (!list.length) {
+      wc.style.height = '';
+      wc.style.minHeight = '0';
+      wc.innerHTML = `<div class="empty" style="padding:26px 12px;color:var(--muted-3);text-align:center">还没有称重记录。点右上角「记录体重」记第一次，之后每天一条就能看出趋势。</div>`;
+    } else {
+      const pts = list.map(w => ({ date: w.date, value: w.kg }));
+      echartsChart(wc, {
+        series: [{ name: '体重', points: pts }],
+        unit: 'kg',
+        target: target,
+        gapDays: 10,
+        onePerDay: true,
+        height: window.innerWidth < 700 ? 220 : 260
+      });
+    }
   }
 
   const bc = $('#bodyChart');

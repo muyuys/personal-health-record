@@ -800,9 +800,8 @@ function loadAll() {
       if (Array.isArray(p)) todoItems = p.filter(validTodoItem).map(normTodoItem);
     }
   } catch (e) { /* 忽略损坏的自建待办 */ }
-  if (!state.weights.length) {
-    state.weights = [{ id: 'seed-20261027', date: ARCHIVE.weight.startDate, kg: ARCHIVE.weight.start, tag: 'reported', waist: null, note: '本人自报，非晨重' }];
-  }
+  /* 不再用档案里的起点值补一条「记录」：没称过就是没称过，
+     起点只出现在进度条的刻度上，不冒充明细表里的记录 */
 }
 
 /* 数据写哪儿：连上本机服务就写 SQLite，连不上才退回浏览器。
@@ -843,7 +842,9 @@ async function bootStore() {
     const localLabs = (localStorage.getItem(LS_LABS) || '').length;
     labs = (d.labs || []).filter(validLab);
     reports = (d.reports || []).filter(validReport).map(normReport);
-    if (Array.isArray(d.weights) && d.weights.length) {
+    /* 服务端是唯一真相：库里没有体重记录就是没有，
+       不能拿档案里的起点值补成一条「记录」（否则明细表会凭空多一条） */
+    if (Array.isArray(d.weights)) {
       state.weights = d.weights.filter(w => w && typeof w.date === 'string' && Number.isFinite(w.kg));
     }
     if (d.done && typeof d.done === 'object') state.done = d.done;

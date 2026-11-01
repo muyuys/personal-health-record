@@ -72,13 +72,13 @@ function dateEyebrow() {
 }
 
 function statusChip(key, small = false) {
-  const s = ARCHIVE.statuses[key] || ARCHIVE.statuses.pending;
+  const s = (ARCHIVE.statuses && (ARCHIVE.statuses[key] || ARCHIVE.statuses.pending)) || { label: '待补充', tone: 'amber' };
   return `<span class="chip ${s.tone}${small ? ' chip-sm' : ''}">${s.label}</span>`;
 }
 
 function renderOverview() {
   setHead(dateEyebrow(), '档案总览',
-    `${ARCHIVE.issues.length} 个健康主题　·　最近更新 ${ARCHIVE.updated}`,
+    `${(ARCHIVE.issues || []).length} 个健康主题　·　最近更新 ${ARCHIVE.updated || '未记录'}`,
     `<label class="search">${I.search}<input id="searchInput" placeholder="搜索问题、药品、指标" aria-label="搜索"> <kbd>/</kbd></label>
      <button class="btn btn-primary" data-act="record">${I.plus}记录一次</button>`, false);
 
@@ -87,16 +87,26 @@ function renderOverview() {
   const waist = waistNow();
   const bl = baselineInfo();
   const pct = progressPct();
-  const gap = (w.kg - ARCHIVE.weight.target).toFixed(1);
+  const target = wtTarget();
+  const startKg = wtStart();
+  const gap = (w && target !== null) ? (w.kg - target).toFixed(1) : null;
   const comp = completeness();
   const tasks = openTodos().slice(0, 3);
-  const events = ARCHIVE.timeline.slice(0, 3);
+  const events = (ARCHIVE.timeline || []).slice(0, 3);
   const themes = ['weight', 'ankle', 'eyes', 'septum', 'liver', 'hair']
-    .map(id => ARCHIVE.issues.find(i => i.id === id)).filter(Boolean);
+    .map(id => (ARCHIVE.issues || []).find(i => i.id === id)).filter(Boolean);
 
-  const heroNote = bl.ok
-    ? `晨重基线 ${kg1(bl.kg)} kg（最近 7 个晨重日均值）　·　距目标 ${gap} kg`
-    : `距目标 ${gap} kg　·　${bl.days ? `已有 ${bl.days} 天晨重，还需 ${bl.need} 天建立基线` : '尚未开始晨重记录，基线待建立'}`;
+  /* 没有称重记录时不能编一个数字：基线卡直接说「还没有」，其余显示 — */
+  const heroNote = !w
+    ? '还没有称重记录。记下第一次体重后，这里会算距目标的距离与进度'
+    : gap === null
+      ? '档案里还没设长期目标，进度暂不计算'
+      : bl.ok
+        ? `晨重基线 ${kg1(bl.kg)} kg（最近 7 个晨重日均值）　·　距目标 ${gap} kg`
+        : `距目标 ${gap} kg　·　${bl.days ? `已有 ${bl.days} 天晨重，还需 ${bl.need} 天建立基线` : '尚未开始晨重记录，基线待建立'}`;
+  const heroSub = !w
+    ? '还没有称重记录'
+    : `${esc(w.date)} ${w.tag === 'morning' ? '晨重' : '自报体重'}${bl.ok ? '' : '，尚未建立晨重基线'}`;
 
   $('#view').innerHTML = `
   <div class="stack">
@@ -109,20 +119,20 @@ function renderOverview() {
     <section class="hero">
       <div class="hero-left">
         <p class="hero-label">身体基线　BASELINE</p>
-        <div class="hero-num"><b>${kg1(w.kg)}</b><span>kg</span></div>
-        <p class="hero-sub">${esc(w.date)} ${w.tag === 'morning' ? '晨重' : '自报体重'}${bl.ok ? '' : '，尚未建立晨重基线'}</p>
+        <div class="hero-num"><b>${w ? kg1(w.kg) : '—'}</b><span>kg</span></div>
+        <p class="hero-sub">${heroSub}</p>
       </div>
       <div class="hero-div"></div>
       <div class="hero-stats">
-        <div class="stat"><small>BMI</small><b>${bmi.toFixed(1)}</b><i class="${bmi >= 24 ? 'warn' : ''}">${bmi >= 24 ? '偏高' : '正常范围'}</i></div>
-        <div class="stat"><small>身高</small><b>${ARCHIVE.profile.height}</b><i>cm</i></div>
-        <div class="stat"><small>长期目标</small><b>${ARCHIVE.weight.target.toFixed(1)}</b><i>kg</i></div>
+        <div class="stat"><small>BMI</small><b>${bmi === null ? '—' : bmi.toFixed(1)}</b><i class="${bmi !== null && bmi >= 24 ? 'warn' : ''}">${bmi === null ? '待记录体重' : bmi >= 24 ? '偏高' : '正常范围'}</i></div>
+        <div class="stat"><small>身高</small><b>${ARCHIVE.profile.height || '—'}</b><i>cm</i></div>
+        <div class="stat"><small>长期目标</small><b>${target === null ? '—' : target.toFixed(1)}</b><i>${target === null ? '未设' : 'kg'}</i></div>
         <div class="stat"><small>腰围</small><b style="font-size:${waist ? '22px' : '19px'}">${waist ? num(waist) : '待测'}</b><i>${waist ? 'cm' : '建议本周补录'}</i></div>
       </div>
       <div class="hero-progress">
-        <div class="hp-row"><span>减重进度</span><b>${Math.round(pct)} %</b></div>
-        <div class="track"><i style="width:${Math.max(pct, 2)}%"></i></div>
-        <div class="hp-scale"><span>${ARCHIVE.weight.start.toFixed(1)} kg 起点</span><span>${ARCHIVE.weight.target.toFixed(1)} kg</span></div>
+        <div class="hp-row"><span>减重进度</span><b>${pct === null ? '—' : Math.round(pct) + ' %'}</b></div>
+        <div class="track"><i style="width:${pct === null ? 0 : Math.max(pct, 2)}%"></i></div>
+        <div class="hp-scale"><span>${startKg === null ? '起点未设' : startKg.toFixed(1) + ' kg 起点'}</span><span>${target === null ? '目标未设' : target.toFixed(1) + ' kg'}</span></div>
         <p class="hp-note">${heroNote}</p>
       </div>
     </section>
@@ -137,31 +147,31 @@ function renderOverview() {
               <p class="task-text">${esc(t.text)}</p>
               <p class="task-meta ${t.flag ? 'flag' : ''}">${esc(t.meta)}</p>
             </div>
-          </div>`).join('') : '<div class="empty">所有待办已勾选。新增问题或复查后记得补充记录。</div>'}
+          </div>`).join('') : `<div class="empty">${allTodos().length ? '所有待办已勾选。新增问题或复查后记得补充记录。' : '还没有待办。新增健康问题、登记复查后，这里会自动列出要跟进的事。'}</div>`}
         <div style="margin-top:14px"><button class="btn-plain" data-act="go" data-to="todo">查看全部 ${allTodos().length} 项 →</button></div>
       </section>
 
       <section class="card">
         <div class="card-head"><h2>最近记录</h2><button class="link" data-act="go" data-to="timeline">查看时间线</button></div>
-        ${events.map(e => `
+        ${events.length ? events.map(e => `
           <div class="event">
             <div class="event-date">${esc(e.date.slice(5))}<span>${esc(e.date.slice(0, 4))}</span></div>
             <div><p class="event-title">${esc(e.type)}</p><p class="event-meta">${esc(e.text)}</p></div>
-          </div>`).join('')}
+          </div>`).join('') : '<div class="empty">还没有事件记录。新增检查、就诊或检验后，这里会按日期列出。</div>'}
       </section>
     </div>
 
     <div class="section-head">
-      <div><h2>健康主题</h2><p>${ARCHIVE.issues.length} 个主题，其中 ${ARCHIVE.issues.filter(i => ['pending', 'stub'].includes(i.status)).length} 个仍待补充信息</p></div>
+      <div><h2>健康主题</h2><p>${(ARCHIVE.issues || []).length} 个主题，其中 ${(ARCHIVE.issues || []).filter(i => ['pending', 'stub'].includes(i.status)).length} 个仍待补充信息</p></div>
       <button class="btn-plain" data-act="go" data-to="issues">全部主题</button>
     </div>
     <div class="grid-cards">
-      ${themes.map(t => `
+      ${themes.length ? themes.map(t => `
         <button class="theme-card" data-act="issue" data-id="${t.id}">
           <div class="tc-head"><span class="tc-name">${esc(t.name)}</span>${statusChip(t.status, true)}</div>
           <p>${esc(t.card)}</p>
           <small>${esc(t.lastDate)}　${esc(t.lastLabel)}</small>
-        </button>`).join('')}
+        </button>`).join('') : '<div class="empty" style="padding:22px 12px;text-align:center">还没有健康主题。点右上「记录一次」或到「健康问题」新增，先建起要跟踪的问题。</div>'}
     </div>
 
     <section class="band">
@@ -720,6 +730,23 @@ function renderTimeline() {
       href: '#/visits', src: '就诊记录'
     });
   });
+  /* 结构化用药也并入时间线：以 startDate 作为事件点，status 反映在用/已停，回链用药页 */
+  medications.forEach(md => {
+    const d = md.startDate || '';
+    const y = d.slice(0, 4);
+    if (!y) return;
+    if (!byYear.has(y)) byYear.set(y, []);
+    const stLabel = medStatusLabel(md.status) || (md.status === 'stopped' ? '已停用' : md.status === 'active' ? '在用' : '状态未知');
+    const meta = [md.dose, md.frequency, md.route].filter(Boolean).join('　');
+    const linkedVisit = md.visitId ? visitById(md.visitId) : null;
+    byYear.get(y).push({
+      date: d,
+      type: '用药',
+      text: [`${md.name || '药物'}（${stLabel}）`, meta,
+        linkedVisit ? `关联就诊 ${linkedVisit.date}` : ''].filter(Boolean).join('　·　'),
+      href: '#/meds', src: '用药记录'
+    });
+  });
   byYear.forEach(items => items.sort((a, b) => String(b.date).localeCompare(String(a.date))));
   const years = Array.from(byYear.entries()).sort((a, b) => b[0].localeCompare(a[0]));
 
@@ -757,42 +784,43 @@ function renderMeds() {
       <section class="card">
         <div class="card-head"><h2>我的用药（结构化）</h2><span class="link">${medications.length} 条</span></div>
         ${medicationsTableHTML()}
-        <p class="hint" style="margin-top:12px">这里记录药物名称、剂量、频次、途径与起止日期；可关联到某次就诊。下方「最近自述使用 / 历史记录」为既有档案整理，保留作对照。</p>
+        <p class="hint" style="margin-top:12px">这里记录药物名称、剂量、频次、途径与起止日期；可关联到某次就诊。下方「历史对照（只读）」为既有静态档案整理，折叠保留作对照，不参与编辑。</p>
       </section>
 
       <section class="card">
-        <div class="card-head"><h2>最近自述使用</h2><span class="chip warn chip-sm">待核对</span></div>
-        <div class="table-wrap">
-          <table class="data">
-            <thead><tr><th>药物</th><th>已记录用法</th><th>信息日期</th><th>当前状态／待核对</th></tr></thead>
-            <tbody>
-              ${m.current.map(x => `<tr>
-                <td><p class="med-name">${esc(x.name)}</p></td>
-                <td><p class="med-use">${esc(x.use)}</p></td>
-                <td class="date">${esc(x.date)}</td>
-                <td><p class="med-use" style="color:var(--warn)">${esc(x.status)}</p></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div class="notice" style="margin-top:14px">${I.info}<p>${esc(m.note)}</p></div>
-      </section>
-
-      <section class="card">
-        <div class="card-head"><h2>历史记录</h2><span class="link">${m.history.length} 条</span></div>
-        <div class="table-wrap">
-          <table class="data">
-            <thead><tr><th>日期</th><th>药物</th><th>原记录用法</th><th>当前状态</th></tr></thead>
-            <tbody>
-              ${m.history.map(x => `<tr>
-                <td class="date">${esc(x.date)}</td>
-                <td><p class="med-name">${esc(x.name)}</p></td>
-                <td><p class="med-use">${esc(x.use)}</p></td>
-                <td><p class="med-use">${esc(x.status)}</p></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
+        <div class="card-head"><h2>历史对照（只读）</h2><span class="chip warn chip-sm">旧档案</span></div>
+        <p class="hint" style="margin:0 0 10px">以下为既有静态档案整理，仅为对照参考，已并入上方结构化用药表管理，不再单独编辑。</p>
+        ${detailFold('medArchive', '既有档案整理（最近自述 / 历史记录）', (m.current.length + m.history.length), `
+          <h3 style="margin:12px 0 8px;font:600 12px/1.4 var(--sans);color:var(--muted-2)">最近自述使用 <span class="chip warn chip-sm">待核对</span></h3>
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th>药物</th><th>已记录用法</th><th>信息日期</th><th>当前状态／待核对</th></tr></thead>
+              <tbody>
+                ${m.current.map(x => `<tr>
+                  <td><p class="med-name">${esc(x.name)}</p></td>
+                  <td><p class="med-use">${esc(x.use)}</p></td>
+                  <td class="date">${esc(x.date)}</td>
+                  <td><p class="med-use" style="color:var(--warn)">${esc(x.status)}</p></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <h3 style="margin:16px 0 8px;font:600 12px/1.4 var(--sans);color:var(--muted-2)">历史记录（${m.history.length} 条）</h3>
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th>日期</th><th>药物</th><th>原记录用法</th><th>当前状态</th></tr></thead>
+              <tbody>
+                ${m.history.map(x => `<tr>
+                  <td class="date">${esc(x.date)}</td>
+                  <td><p class="med-name">${esc(x.name)}</p></td>
+                  <td><p class="med-use">${esc(x.use)}</p></td>
+                  <td><p class="med-use">${esc(x.status)}</p></td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="notice" style="margin-top:14px">${I.info}<p>${esc(m.note)}</p></div>
+        `)}
       </section>
 
       <section class="card">
