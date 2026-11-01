@@ -706,46 +706,69 @@ function paintChart(host, pts, o = {}) {
 }
 
 /* ======================= 渲染：时间线 ======================= */
+/* 事件归一化（task 023 P1-a）：时间线是 visit / medication / 静态 timeline 三类事件的
+   只读聚合视图，统一成 {id, date, type, text, href, src, kind} 一个结构后再排序渲染。
+   - visit：主键 visit.id，事件日期 v.date，回链就诊页；关联只读权威外键 visit.reportId。
+   - medication：主键 medication.id，事件日期 startDate，回链用药页；关联只读权威外键 medication.visitId。
+   - 静态 timeline：非表事件（照片归档/舌苔等），无 id，用 date+src 生成稳定 key。
+   注意：visit 与 medication 是不同领域实体（点事件 vs 线段），此处只做渲染归一，不合并存储。 */
+function timeEvent({ id, date, type, href, src, text, kind, reportId, visitId }) {
+  return {
+    id: String(id || ''),
+    date: String(date || ''),
+    type: type || '',
+    href: href || '',
+    src: src || '',
+    text: text || '',
+    kind: kind || '',
+    reportId: reportId || '',
+    visitId: visitId || ''
+  };
+}
+function timelineVisits() {
+  return visits.map(v => timeEvent({
+    id: v.id, date: v.date, type: v.visitType || '就诊', href: '#/visits', src: '就诊记录',
+    kind: 'visit', reportId: v.reportId,
+    text: [[v.department, v.hospital, v.doctor].filter(Boolean).join('　'),
+      v.diagnosis ? `诊断：${v.diagnosis}` : '', v.summary].filter(Boolean).join('　·　')
+  }));
+}
+function timelineMeds() {
+  return medications.map(md => {
+    const stLabel = medStatusLabel(md.status) || (md.status === 'stopped' ? '已停用' : md.status === 'active' ? '在用' : '状态未知');
+    const meta = [md.dose, md.frequency, md.route].filter(Boolean).join('　');
+    const linkedVisit = md.visitId ? visitById(md.visitId) : null; // 只读权威外键 medication.visitId
+    return timeEvent({
+      id: md.id, date: md.startDate, type: '用药', href: '#/meds', src: '用药记录',
+      kind: 'medication', visitId: md.visitId,
+      text: [`${md.name || '药物'}（${stLabel}）`, meta,
+        linkedVisit ? `关联就诊 ${linkedVisit.date}` : ''].filter(Boolean).join('　·　')
+    });
+  });
+}
+function timelineStatics() {
+  return (ARCHIVE.timeline || []).map(t => timeEvent({
+    id: `${t.date}::${t.src || ''}`,  // 静态事件无 id：用 date+src 生成稳定 key
+    date: t.date, type: t.type, href: t.href, src: t.src, text: t.text, kind: 'static'
+  }));
+}
 function renderTimeline() {
   setHead('TIMELINE　检查与就诊', '检查时间线',
     '按事件日期排列；日期不确定的写范围，不强行统一',
     `<button class="btn btn-ghost" data-act="export">${I.download}导出备份</button>`);
 
+  /* 三类事件归一为同一结构后统一按年分组、按日期倒序 */
+  const events = []
+    .concat(timelineStatics())
+    .concat(timelineVisits())
+    .concat(timelineMeds())
+    .filter(e => e.date && e.date.slice(0, 4));
+
   const byYear = new Map();
-  ARCHIVE.timeline.forEach(t => {
+  events.forEach(t => {
     const y = t.date.slice(0, 4);
     if (!byYear.has(y)) byYear.set(y, []);
     byYear.get(y).push(t);
-  });
-  /* 结构化就诊记录也并入时间线（与就诊页联动），日期倒序插到对应年份 */
-  visits.forEach(v => {
-    const y = (v.date || '').slice(0, 4);
-    if (!y) return;
-    if (!byYear.has(y)) byYear.set(y, []);
-    byYear.get(y).push({
-      date: v.date,
-      type: v.visitType || '就诊',
-      text: [[v.department, v.hospital, v.doctor].filter(Boolean).join('　'),
-        v.diagnosis ? `诊断：${v.diagnosis}` : '', v.summary].filter(Boolean).join('　·　'),
-      href: '#/visits', src: '就诊记录'
-    });
-  });
-  /* 结构化用药也并入时间线：以 startDate 作为事件点，status 反映在用/已停，回链用药页 */
-  medications.forEach(md => {
-    const d = md.startDate || '';
-    const y = d.slice(0, 4);
-    if (!y) return;
-    if (!byYear.has(y)) byYear.set(y, []);
-    const stLabel = medStatusLabel(md.status) || (md.status === 'stopped' ? '已停用' : md.status === 'active' ? '在用' : '状态未知');
-    const meta = [md.dose, md.frequency, md.route].filter(Boolean).join('　');
-    const linkedVisit = md.visitId ? visitById(md.visitId) : null;
-    byYear.get(y).push({
-      date: d,
-      type: '用药',
-      text: [`${md.name || '药物'}（${stLabel}）`, meta,
-        linkedVisit ? `关联就诊 ${linkedVisit.date}` : ''].filter(Boolean).join('　·　'),
-      href: '#/meds', src: '用药记录'
-    });
   });
   byYear.forEach(items => items.sort((a, b) => String(b.date).localeCompare(String(a.date))));
   const years = Array.from(byYear.entries()).sort((a, b) => b[0].localeCompare(a[0]));
@@ -756,7 +779,7 @@ function renderTimeline() {
         <section class="tl-group">
           <h2>${y} 年　<span style="font:400 11px/1 var(--sans);color:var(--muted-3)">${items.length} 条</span></h2>
           ${items.map(t => `
-            <div class="tl-item">
+            <div class="tl-item" data-kind="${esc(t.kind)}" data-id="${esc(t.id)}">
               <time>${esc(t.date)}</time>
               <span class="type">${esc(t.type)}</span>
               <p>${esc(t.text)}</p>

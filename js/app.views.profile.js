@@ -148,7 +148,9 @@ function summaryLabsFor(scope) {
   let rows;
   if (scope.mode === 'visit') {
     const v = scope.visit;
-    rows = labs.filter(r => (v.reportId && r.reportId === v.reportId) || (v.date && r.date === v.date));
+    // task 023 P1-b：关联只用权威外键 visit.reportId，不再用日期兜底另拼，
+    // 与时间线一致；未关联报告的就诊不强行拉入同日检验。
+    rows = v.reportId ? labs.filter(r => r.reportId === v.reportId) : [];
   } else if (scope.mode === 'range') {
     const { from, to } = scope;
     rows = labs.filter(r => (!from || r.date >= from) && (!to || r.date <= to));
@@ -160,9 +162,9 @@ function summaryLabsFor(scope) {
 function summaryMedsFor(scope) {
   if (scope.mode === 'visit') {
     const v = scope.visit;
-    const byVisit = medications.filter(m => m.visitId === v.id);
-    const active = medications.filter(m => m.status === 'active' && m.visitId !== v.id);
-    return byVisit.concat(active);
+    // task 023 P1-b：关联只用权威外键 medication.visitId；不再额外并入所有在服药物，
+    // 避免把与该次就诊无关的活跃用药算进本次摘要（在服药物可在区间摘要查看）。
+    return medications.filter(m => m.visitId === v.id);
   }
   if (scope.mode === 'range') {
     const { from, to } = scope;
