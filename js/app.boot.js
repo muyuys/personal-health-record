@@ -165,6 +165,16 @@ document.addEventListener('click', e => {
       ui.compMetric = el.dataset.k;
       renderWeight();
       break;
+    case 'sl-im-seg': {
+      // 「减重」聚合页分段切换：只切内存态并重渲染当前段
+      const seg = el.dataset.seg;
+      if (['overview', 'weight', 'diet', 'review'].includes(seg)) {
+        ui.slImSeg = seg;
+        renderWeight();
+        syncChrome('weight');
+      }
+      break;
+    }
     case 'diet-day-add':
       openDietDay(null);
       break;
@@ -929,8 +939,8 @@ const ROUTES = {
   summary: { render: renderSummary, label: '就诊摘要导出' },
   meds: { render: renderMeds, label: '用药记录' },
   todo: { render: renderTodos, label: '复诊待办' },
-  weight: { render: renderWeight, label: '减重记录' },
-  diet: { render: renderDiet, label: '减重执行' },
+  weight: { render: renderWeight, label: '减重' },
+  diet: { render: renderDiet, label: '减重' },
   sleep: { render: renderSleep, label: '睡眠' },
   vitals: { render: renderVitals, label: '生命体征' },
   symptoms: { render: renderSymptoms, label: '症状日记' },
@@ -939,6 +949,8 @@ const ROUTES = {
 
 function currentPage() {
   const h = location.hash.replace(/^#\/?/, '').split('?')[0];
+  // 旧 #/diet 链接兼容：映射到「减重」聚合页，并选中「饮食执行」段（不 404）
+  if (h === 'diet') { ui.slImSeg = 'diet'; return 'weight'; }
   return ROUTES[h] ? h : 'overview';
 }
 
