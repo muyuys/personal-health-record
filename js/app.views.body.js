@@ -167,7 +167,24 @@ function paintCompChart() {
   });
 }
 
-function renderWeight() {
+/* ---------- 「减重」聚合页：单入口 + 四段（概览 / 体重与身体成分 / 饮食执行 / 每周复盘） ----------
+   本页把原 renderWeight（体重记录）与 renderDiet（减重执行）两块合并为一个大主题，
+   但底层数据仍各自独立：state.weights 与 dietDays/dietWeeks 不合并、不互覆盖。
+   分段只切渲染，换段时只有当前段渲染其图表，保证 hero / 图表 host id 唯一。 */
+const SL_IM_SEGS = [
+  { k: 'overview', label: '概览' },
+  { k: 'weight', label: '体重与身体成分' },
+  { k: 'diet', label: '饮食执行' },
+  { k: 'review', label: '每周复盘' }
+];
+function segChipsHTML(active) {
+  return `<div class="filter-row" style="margin-bottom:4px">${SL_IM_SEGS
+    .map(s => `<button class="filter-chip ${s.k === active ? 'on' : ''}" data-act="sl-im-seg" data-seg="${s.k}">${esc(s.label)}</button>`)
+    .join('')}</div>`;
+}
+
+/* 概览段：把 weights 与 dietDays 汇总成一条「体重」主线，只读展示，不合并两套体重口径 */
+function slImOverviewHTML() {
   const list = weightList();
   const cur = latestWeight();
   const bl = baselineInfo();
@@ -176,119 +193,257 @@ function renderWeight() {
   const startKg = wtStart();
   const change = (cur && startKg !== null) ? cur.kg - startKg : null;
   const since7 = list.filter(w => (Date.now() - Date.parse(w.date + 'T00:00:00')) <= 7 * 864e5);
-  const pg = paginate(list.slice().reverse(), 'weight');
+  const days = dietDaysSorted();
+  const days7 = days.filter(d => (Date.now() - Date.parse(d.date + 'T00:00:00')) <= 7 * 864e5);
+  const kcal7 = days7.map(d => d.kcalCenter).filter(Number.isFinite);
+  const kcalCenter = kcal7.length ? avg(kcal7) : null;
+  const complete7 = days7.filter(d => d.completeness && d.completeness !== '未填').length;
+  const days7WithRec = days7.length;
 
-  setHead('WEIGHT LOG　减重记录', '减重记录',
-    '同条件晨重建立基线；自报体重单列，不并入均值',
-    `<button class="btn btn-primary" data-act="weight-add">${I.plus}记录体重</button>`);
-
-  $('#view').innerHTML = `
-    <div class="stack">
-      <section class="hero">
-        <div class="hero-left">
-          <p class="hero-label">当前体重　WEIGHT</p>
-          <div class="hero-num"><b>${cur ? kg1(cur.kg) : '—'}</b><span>kg</span></div>
-          <p class="hero-sub">${cur ? `${esc(cur.date)} ${cur.tag === 'morning' ? '晨重' : cur.tag === 'device' ? '设备测量' : '自报，非标准晨重'}` : '还没有称重记录'}</p>
-        </div>
-        <div class="hero-div"></div>
-        <div class="hero-stats">
-          <div class="stat"><small>较起点</small><b>${change === null ? '—' : (change > 0 ? '+' : '') + change.toFixed(1)}</b><i>${change === null ? '无起点' : 'kg'}</i></div>
-          <div class="stat"><small>7 天晨重均值</small><b style="font-size:${bl.ok ? '22px' : '19px'}">${bl.ok ? kg1(bl.kg) : (bl.days ? '记录中' : '未建立')}</b><i>${bl.ok ? 'kg' : `还需 ${bl.need ?? 7} 天`}</i></div>
-          <div class="stat"><small>长期目标</small><b>${target === null ? '—' : target.toFixed(1)}</b><i>${target === null ? '未设' : 'kg'}</i></div>
-          <div class="stat"><small>近 7 天记录</small><b>${since7.length}</b><i>次</i></div>
-        </div>
-        <div class="hero-progress">
-          <div class="hp-row"><span>减重进度</span><b>${pct === null ? '—' : Math.round(pct) + ' %'}</b></div>
-          <div class="track"><i style="width:${pct === null ? 0 : Math.max(pct, 2)}%"></i></div>
-          <div class="hp-scale"><span>${startKg === null ? '起点未设' : startKg.toFixed(1) + ' kg'}</span><span>${target === null ? '目标未设' : target.toFixed(1) + ' kg'}</span></div>
-          <p class="hp-note">${cur
-            ? target === null ? '档案里还没设长期目标，进度暂不计算' : `距目标 ${(cur.kg - target).toFixed(1)} kg　·　${ARCHIVE.weight.stageTarget || ''}`
-            : '记下第一次体重后，这里会算距目标的距离与进度'}</p>
-        </div>
-      </section>
-
-      <section class="card chart-card">
-        <div class="chart-head">
-          <div class="chart-title"><h2>体重趋势</h2><p>${list.length
-            ? `共 ${list.length} 条记录 / ${new Set(list.map(w => w.date)).size} 天　·　${target === null ? '未设长期目标' : '虚线为长期目标 ' + target.toFixed(1) + ' kg'}　·　线断开处为没有称重的时段`
-            : '还没有称重记录，记两次以上才画得出趋势'}</p></div>
-          <span class="chip ${bl.ok ? 'green' : 'amber'} chip-sm">${bl.ok ? '已建立晨重基线' : '基线待建立'}</span>
-        </div>
-        <div class="chart-box" id="weightChart"></div>
-      </section>
-
-      ${bodyCardHTML()}
-
-      ${compCardHTML()}
-
-      ${detailFold('weight', '记录明细', list.length, `
-        ${(() => {
-          const kgs = list.map(w => w.kg).filter(Number.isFinite);
-          const dates = list.map(w => w.date).filter(Boolean).sort();
-          return statsBar([
-            kgs.length ? { label: '最低', value: kg1(Math.min(...kgs)) + ' kg' } : null,
-            kgs.length ? { label: '最高', value: kg1(Math.max(...kgs)) + ' kg' } : null,
-            kgs.length ? { label: '均值', value: kg1(avg(kgs)) + ' kg', sub: `${kgs.length} 次` } : null,
-            dates.length ? { label: '记录区间', value: esc(dates[0] + ' ~ ' + dates[dates.length - 1]), sub: `${dates.length} 天` } : null
-          ]);
-        })()}
-        <div class="table-wrap">
-          <table class="data w-table">
-            <thead><tr><th>日期</th><th>体重</th><th>条件</th><th>腰围</th><th>身体成分</th><th>备注</th><th></th></tr></thead>
-            <tbody>
-              ${pg.rows.map(w => `<tr>
-                <td class="date">${esc(w.date)}</td>
-                <td class="num">${kg1(w.kg)}<span style="color:var(--muted-3);font-size:9px;font-weight:400"> kg</span></td>
-                <td><span class="chip ${w.tag === 'morning' ? 'green' : 'mute'} chip-sm">${w.tag === 'morning' ? '晨重' : w.tag === 'device' ? '设备' : w.tag === 'reported' ? '自报' : '其他时段'}</span></td>
-                <td class="ref" style="text-align:left">${(() => { const b = bodyOf(w.date); return b && Number.isFinite(b.waist) ? num(b.waist) + ' cm' : '—'; })()}</td>
-                <td style="color:var(--muted);font-size:10.5px">${(() => { const parts = WEIGHT_METRICS.filter(m => weightMetricVal(w, m.k) !== null).map(m => `${m.label} ${num(weightMetricVal(w, m.k), m.dec)}${m.unit || ''}`); return parts.length ? parts.join('　') : '—'; })()}</td>
-                <td style="color:var(--muted);font-size:10.5px">${esc(w.note || '—')}</td>
-                <td class="act"><button data-act="weight-edit" data-id="${esc(w.id)}">编辑</button><button class="danger" data-act="weight-del" data-id="${esc(w.id)}">删除</button></td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        ${pagerHTML('weight', pg)}
-      `)}
-
-      <div class="grid-2">
-        <section class="card">
-          <div class="card-head"><h2>称重与记录规则</h2></div>
-          ${((ARCHIVE.weight && ARCHIVE.weight.rules) || []).map((r, i) => `<div class="task"><div class="task-body"><p class="task-text" style="font-size:12px">${i + 1}. ${esc(r)}</p></div></div>`).join('')}
-        </section>
-        <section class="card">
-          <div class="card-head"><h2>当前计划</h2><span class="chip amber chip-sm">建议值</span></div>
-          <div class="tl-row"><time>摄入</time><p>${esc((ARCHIVE.weight && ARCHIVE.weight.kcal) || '未记录')}</p></div>
-          <div class="tl-row"><time>阶段目标</time><p>${esc((ARCHIVE.weight && ARCHIVE.weight.stageTarget) || '未设')}</p></div>
-          <div class="tl-row"><time>复盘</time><p>2026-11-03 首次周复盘；11-10 至 11-17 复核趋势与热量预算</p></div>
-          <p class="hint" style="margin-top:10px">以上为自行复盘计划，未设置提醒；体重变化需结合实际记录与身体反应调整。</p>
-        </section>
+  return `
+    <section class="hero">
+      <div class="hero-left">
+        <p class="hero-label">当前体重　WEIGHT</p>
+        <div class="hero-num"><b>${cur ? kg1(cur.kg) : '—'}</b><span>kg</span></div>
+        <p class="hero-sub">${cur ? `${esc(cur.date)} ${cur.tag === 'morning' ? '晨重' : cur.tag === 'device' ? '设备测量' : '自报，非标准晨重'}` : '还没有称重记录'}</p>
       </div>
+      <div class="hero-div"></div>
+      <div class="hero-stats">
+        <div class="stat"><small>较起点</small><b>${change === null ? '—' : (change > 0 ? '+' : '') + change.toFixed(1)}</b><i>${change === null ? '无起点' : 'kg'}</i></div>
+        <div class="stat"><small>7 天晨重均值</small><b style="font-size:${bl.ok ? '22px' : '19px'}">${bl.ok ? kg1(bl.kg) : (bl.days ? '记录中' : '未建立')}</b><i>${bl.ok ? 'kg' : `还需 ${bl.need ?? 7} 天`}</i></div>
+        <div class="stat"><small>长期目标</small><b>${target === null ? '—' : target.toFixed(1)}</b><i>${target === null ? '未设' : 'kg'}</i></div>
+        <div class="stat"><small>近 7 天记录</small><b>${since7.length}</b><i>次</i></div>
+      </div>
+      <div class="hero-progress">
+        <div class="hp-row"><span>减重进度</span><b>${pct === null ? '—' : Math.round(pct) + ' %'}</b></div>
+        <div class="track"><i style="width:${pct === null ? 0 : Math.max(pct, 2)}%"></i></div>
+        <div class="hp-scale"><span>${startKg === null ? '起点未设' : startKg.toFixed(1) + ' kg'}</span><span>${target === null ? '目标未设' : target.toFixed(1) + ' kg'}</span></div>
+        <p class="hp-note">${cur
+          ? target === null ? '档案里还没设长期目标，进度暂不计算' : `距目标 ${(cur.kg - target).toFixed(1)} kg　·　${ARCHIVE.weight.stageTarget || ''}`
+          : '记下第一次体重后，这里会算距目标的距离与进度'}</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>近 7 天饮食执行</h2><span class="link">${days7WithRec} 天有记录</span></div>
+      <div class="grid-3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+        <div class="stat"><small>摄入中心均值</small><b>${kcalCenter === null ? '—' : num(kcalCenter, 0)}</b><i>${kcalCenter === null ? '无估算' : 'kcal'}</i></div>
+        <div class="stat"><small>完整记录天数</small><b>${complete7}</b><i>/ ${days7WithRec} 天</i></div>
+        <div class="stat"><small>累计每日记录</small><b>${days.length}</b><i>条</i></div>
+      </div>
+      <p class="hint" style="margin-top:12px">摄入为估算中心值，仅回看趋势，不作为极端减餐依据；「完整度」按你记录时自评。</p>
+    </section>
+
+    <section class="card" style="border-left:3px solid #A9752F">
+      <div class="card-head"><h2>关于两套体重口径</h2><span class="link">只读说明</span></div>
+      <ul style="margin:0;padding-left:18px;color:var(--muted-2);font-size:12.5px;line-height:1.9">
+        <li><b>体重记录</b>（本页「体重与身体成分」段）：来自 <code>state.weights</code>，可含晨重 / 其他时段 / 自报 / 设备测量等多种条件，是体重与身体成分的主档。</li>
+        <li><b>每日晨重</b>（「饮食执行」段）：来自每日饮食记录里的 <code>morningWeight</code>，按标准晨重口径（晨起排尿后、进食前、同秤）逐日记。</li>
+        <li>两者是同一件事的两次录入、口径不同：<b>不自动合并、不互相覆盖</b>。看趋势时以同口径序列为准，勿把两套数值直接对比或平均。</li>
+      </ul>
+    </section>`;
+}
+
+/* 每日记录 + 提醒 + 执行趋势（原 renderDiet 主体，抽出供「饮食执行」段复用） */
+function slImDietHTML() {
+  const days = dietDaysSorted();
+  const weeks = dietWeeksSorted();
+  const remind = dietReminders(days, weeks);
+  const remindCard = remind.length ? `
+    <section class="card" style="border-left:3px solid #A9752F">
+      <div class="card-head"><h2>提醒</h2><span class="link">${I.info || ''}</span></div>
+      <ul style="margin:0;padding-left:18px;color:var(--muted-2);font-size:12.5px;line-height:1.9">
+        ${remind.map(m => `<li>${esc(m)}</li>`).join('')}
+      </ul>
+    </section>` : '';
+
+  const wPts = dietTrendPoints('morningWeight');
+  const kPts = dietTrendPoints('kcalCenter');
+  const trendCard = (wPts.length || kPts.length) ? `
+    <section class="card">
+      <div class="card-head"><h2>执行趋势</h2><span class="link">${days.length} 天 · ${weeks.length} 周</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+        ${wPts.length ? `<div><div class="chart-title"><h2 style="font-size:12.5px">晨重（kg）</h2><p>仅统计填了晨重的天；缺测不补</p></div><div class="chart-box" id="dietWeightChart" style="min-height:200px"></div></div>` : ''}
+        ${kPts.length ? `<div><div class="chart-title"><h2 style="font-size:12.5px">每日摄入中心值（kcal）</h2><p>仅统计估算了摄入的天；数值为估算</p></div><div class="chart-box" id="dietKcalChart" style="min-height:200px"></div></div>` : ''}
+      </div>
+    </section>` : '';
+
+  const dayRows = days.map(d => {
+    const comp = d.completeness ? `<span class="chip chip-sm">${esc(d.completeness)}</span>` : '<span style="color:var(--muted-3)">—</span>';
+    const kcal = Number.isFinite(d.kcalCenter)
+      ? `${num(d.kcalCenter, 0)}${(Number.isFinite(d.kcalLow) && Number.isFinite(d.kcalHigh)) ? ` <small style="color:var(--muted-3)">(${num(d.kcalLow, 0)}–${num(d.kcalHigh, 0)})</small>` : ''}`
+      : '—';
+    const ank = [d.ankle, d.summary].filter(Boolean).join('；') || '—';
+    return `<tr>
+      <td class="date">${esc(d.date)}</td>
+      <td class="num">${Number.isFinite(d.morningWeight) ? num(d.morningWeight, 1) + '<span style="color:var(--muted-3);font-size:9px"> kg</span>' : '—'}</td>
+      <td class="num">${kcal}</td>
+      <td>${comp}</td>
+      <td style="color:var(--muted-2)">${esc(ank)}</td>
+      <td class="act"><button data-act="diet-day-edit" data-id="${esc(d.id)}">编辑</button><button class="danger" data-act="diet-day-del" data-id="${esc(d.id)}">删除</button></td>
+    </tr>`;
+  }).join('');
+  const dayCard = `
+    <section class="card">
+      <div class="card-head"><h2>每日记录</h2><span class="link">${days.length} 条</span></div>
+      ${!days.length ? `<div class="empty" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:22px 6px">
+          <p style="margin:0;color:var(--muted)">还没有每日记录。每天花一分钟记：晨重、三餐与饮料份量、当天摄入估算和「完整度」。空白一律表示「未记录」，不等于没吃；没吃请写「未吃」。</p>
+          <button class="btn btn-primary" data-act="diet-day-add">${I.plus}记录今天</button>
+        </div>`
+        : `<div class="table-wrap"><table class="data"><thead><tr><th>日期</th><th>晨重</th><th>摄入中心（范围）</th><th>完整度</th><th>活动 / 踝 / 小结</th><th></th></tr></thead><tbody>${dayRows}</tbody></table></div>
+           <p class="hint" style="margin-top:12px">「未记录」与「未吃」分开；运动热量不从摄入扣除。连续记录后趋势才有意义，单日涨跌不作为减餐依据。</p>`}
+    </section>`;
+
+  return { html: `${remindCard}${trendCard}${dayCard}`, wPts, kPts };
+}
+
+/* 每周复盘表（原 renderDiet 的 weekCard，抽出供「每周复盘」段复用） */
+function slImWeekHTML() {
+  const weeks = dietWeeksSorted();
+  const weekRows = weeks.map(w => {
+    const span = [w.weekStart, w.weekEnd].filter(Boolean).join(' → ') || '—';
+    const wa = Number.isFinite(w.weightAvg) ? num(w.weightAvg, 1) + ' kg' : '—';
+    const kcal = Number.isFinite(w.kcalCenter) ? num(w.kcalCenter, 0) + ' kcal' : '—';
+    const cd = Number.isFinite(w.completeDays) ? num(w.completeDays, 0) + ' 天' : '—';
+    return `<tr>
+      <td class="date">${esc(span)}${w.reviewDate ? `<small style="color:var(--muted-3);display:block">复盘 ${esc(w.reviewDate)}</small>` : ''}</td>
+      <td class="num">${wa}</td>
+      <td class="num">${cd}</td>
+      <td class="num">${kcal}</td>
+      <td style="color:var(--muted-2)">${esc(w.nextFocus || w.observeDiff || '—')}</td>
+      <td class="act"><button data-act="diet-week-edit" data-id="${esc(w.id)}">编辑</button><button class="danger" data-act="diet-week-del" data-id="${esc(w.id)}">删除</button></td>
+    </tr>`;
+  }).join('');
+  return `
+    <section class="card">
+      <div class="card-head"><h2>每周复盘</h2><span class="link">${weeks.length} 周</span></div>
+      ${!weeks.length ? `<div class="empty" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:22px 6px">
+          <p style="margin:0;color:var(--muted)">还没有每周复盘。每 7 天填一次：晨重均值、完整饮食天数、平均摄入与踝部反应，以及下周只改进的一件事。连续 2–3 周数据较完整后再判断是否调整。</p>
+          <button class="btn btn-primary" data-act="diet-week-add">写第一份周复盘</button>
+        </div>`
+        : `<div class="table-wrap"><table class="data"><thead><tr><th>周起止</th><th>晨重均值</th><th>完整饮食天数</th><th>平均摄入中心</th><th>下周重点</th><th></th></tr></thead><tbody>${weekRows}</tbody></table></div>`}
+    </section>`;
+}
+
+/* 「体重与身体成分」段：原 renderWeight 主体 */
+function slImWeightHTML() {
+  const list = weightList();
+  const bl = baselineInfo();
+  const target = wtTarget();
+  const pg = paginate(list.slice().reverse(), 'weight');
+  return `
+    <section class="card chart-card">
+      <div class="chart-head">
+        <div class="chart-title"><h2>体重趋势</h2><p>${list.length
+          ? `共 ${list.length} 条记录 / ${new Set(list.map(w => w.date)).size} 天　·　${target === null ? '未设长期目标' : '虚线为长期目标 ' + target.toFixed(1) + ' kg'}　·　线断开处为没有称重的时段`
+          : '还没有称重记录，记两次以上才画得出趋势'}</p></div>
+        <span class="chip ${bl.ok ? 'green' : 'amber'} chip-sm">${bl.ok ? '已建立晨重基线' : '基线待建立'}</span>
+      </div>
+      <div class="chart-box" id="weightChart"></div>
+    </section>
+
+    ${bodyCardHTML()}
+
+    ${compCardHTML()}
+
+    ${detailFold('weight', '记录明细', list.length, `
+      ${(() => {
+        const kgs = list.map(w => w.kg).filter(Number.isFinite);
+        const dates = list.map(w => w.date).filter(Boolean).sort();
+        return statsBar([
+          kgs.length ? { label: '最低', value: kg1(Math.min(...kgs)) + ' kg' } : null,
+          kgs.length ? { label: '最高', value: kg1(Math.max(...kgs)) + ' kg' } : null,
+          kgs.length ? { label: '均值', value: kg1(avg(kgs)) + ' kg', sub: `${kgs.length} 次` } : null,
+          dates.length ? { label: '记录区间', value: esc(dates[0] + ' ~ ' + dates[dates.length - 1]), sub: `${dates.length} 天` } : null
+        ]);
+      })()}
+      <div class="table-wrap">
+        <table class="data w-table">
+          <thead><tr><th>日期</th><th>体重</th><th>条件</th><th>腰围</th><th>身体成分</th><th>备注</th><th></th></tr></thead>
+          <tbody>
+            ${pg.rows.map(w => `<tr>
+              <td class="date">${esc(w.date)}</td>
+              <td class="num">${kg1(w.kg)}<span style="color:var(--muted-3);font-size:9px;font-weight:400"> kg</span></td>
+              <td><span class="chip ${w.tag === 'morning' ? 'green' : 'mute'} chip-sm">${w.tag === 'morning' ? '晨重' : w.tag === 'device' ? '设备' : w.tag === 'reported' ? '自报' : '其他时段'}</span></td>
+              <td class="ref" style="text-align:left">${(() => { const b = bodyOf(w.date); return b && Number.isFinite(b.waist) ? num(b.waist) + ' cm' : '—'; })()}</td>
+              <td style="color:var(--muted);font-size:10.5px">${(() => { const parts = WEIGHT_METRICS.filter(m => weightMetricVal(w, m.k) !== null).map(m => `${m.label} ${num(weightMetricVal(w, m.k), m.dec)}${m.unit || ''}`); return parts.length ? parts.join('　') : '—'; })()}</td>
+              <td style="color:var(--muted);font-size:10.5px">${esc(w.note || '—')}</td>
+              <td class="act"><button data-act="weight-edit" data-id="${esc(w.id)}">编辑</button><button class="danger" data-act="weight-del" data-id="${esc(w.id)}">删除</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${pagerHTML('weight', pg)}
+    `)}
+
+    <div class="grid-2">
+      <section class="card">
+        <div class="card-head"><h2>称重与记录规则</h2></div>
+        ${((ARCHIVE.weight && ARCHIVE.weight.rules) || []).map((r, i) => `<div class="task"><div class="task-body"><p class="task-text" style="font-size:12px">${i + 1}. ${esc(r)}</p></div></div>`).join('')}
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>当前计划</h2><span class="chip amber chip-sm">建议值</span></div>
+        <div class="tl-row"><time>摄入</time><p>${esc((ARCHIVE.weight && ARCHIVE.weight.kcal) || '未记录')}</p></div>
+        <div class="tl-row"><time>阶段目标</time><p>${esc((ARCHIVE.weight && ARCHIVE.weight.stageTarget) || '未设')}</p></div>
+        <div class="tl-row"><time>复盘</time><p>2026-11-03 首次周复盘；11-10 至 11-17 复核趋势与热量预算</p></div>
+        <p class="hint" style="margin-top:10px">以上为自行复盘计划，未设置提醒；体重变化需结合实际记录与身体反应调整。</p>
+      </section>
     </div>`;
+}
 
-  const wc = $('#weightChart');
-  if (wc) {
-    if (!list.length) {
-      wc.style.height = '';
-      wc.style.minHeight = '0';
-      wc.innerHTML = `<div class="empty" style="padding:26px 12px;color:var(--muted-3);text-align:center">还没有称重记录。点右上角「记录体重」记第一次，之后每天一条就能看出趋势。</div>`;
-    } else {
-      const pts = list.map(w => ({ date: w.date, value: w.kg }));
-      echartsChart(wc, {
-        series: [{ name: '体重', points: pts }],
-        unit: 'kg',
-        target: target,
-        gapDays: 10,
-        onePerDay: true,
-        height: window.innerWidth < 700 ? 220 : 260
-      });
+/* 聚合页主渲染：按 ui.slImSeg 只渲染当前段；头部与分段 chip 常驻，动作按钮按段切换 */
+function renderWeight() {
+  const seg = SL_IM_SEGS.some(s => s.k === ui.slImSeg) ? ui.slImSeg : 'overview';
+  const segLabel = (SL_IM_SEGS.find(s => s.k === seg) || {}).label || '';
+  const actionsBySeg = {
+    overview: `<button class="btn btn-primary" data-act="weight-add">${I.plus}记录体重</button><button class="btn" data-act="diet-day-add">${I.plus}记录今天</button>`,
+    weight: `<button class="btn btn-primary" data-act="weight-add">${I.plus}记录体重</button>`,
+    diet: `<button class="btn btn-primary" data-act="diet-day-add">${I.plus}记录今天</button><button class="btn" data-act="diet-week-add">写周复盘</button>`,
+    review: `<button class="btn btn-primary" data-act="diet-week-add">写周复盘</button>`
+  };
+
+  setHead('SLIM　减重', '减重',
+    `体重管理统一入口　·　体重记录与饮食执行合并为一个大主题　·　当前：${segLabel}`,
+    actionsBySeg[seg] || '');
+
+  let bodyHTML = '';
+  let dietCharts = null;
+  if (seg === 'overview') bodyHTML = slImOverviewHTML();
+  else if (seg === 'weight') bodyHTML = slImWeightHTML();
+  else if (seg === 'diet') { const r = slImDietHTML(); bodyHTML = r.html; dietCharts = r; }
+  else bodyHTML = slImWeekHTML();
+
+  $('#view').innerHTML = `<div class="stack">${segChipsHTML(seg)}${bodyHTML}</div>`;
+
+  // 图表只在「体重与身体成分」段渲染，避免 host id 在无图表段重复
+  if (seg === 'weight') {
+    const list = weightList();
+    const target = wtTarget();
+    const wc = $('#weightChart');
+    if (wc) {
+      if (!list.length) {
+        wc.style.height = '';
+        wc.style.minHeight = '0';
+        wc.innerHTML = `<div class="empty" style="padding:26px 12px;color:var(--muted-3);text-align:center">还没有称重记录。点右上角「记录体重」记第一次，之后每天一条就能看出趋势。</div>`;
+      } else {
+        const pts = list.map(w => ({ date: w.date, value: w.kg }));
+        echartsChart(wc, {
+          series: [{ name: '体重', points: pts }],
+          unit: 'kg',
+          target: target,
+          gapDays: 10,
+          onePerDay: true,
+          height: window.innerWidth < 700 ? 220 : 260
+        });
+      }
     }
+    const bc = $('#bodyChart');
+    if (bc) paintBodyChart(bc, bodyList());
+    paintCompChart();
+  } else if (seg === 'diet' && dietCharts) {
+    if (dietCharts.wPts.length) { const host = $('#dietWeightChart'); if (host) echartsChart(host, { series: [{ name: '晨重', points: dietCharts.wPts }], unit: 'kg', height: 200 }); }
+    if (dietCharts.kPts.length) { const host = $('#dietKcalChart'); if (host) echartsChart(host, { series: [{ name: '摄入', points: dietCharts.kPts }], unit: 'kcal', height: 200 }); }
   }
-
-  const bc = $('#bodyChart');
-  if (bc) paintBodyChart(bc, bodyList());
-
-  paintCompChart();
 }
 
 /* ======================= 渲染：生命体征 ======================= */
@@ -633,86 +788,10 @@ function dietReminders(days, weeks) {
   return msgs;
 }
 function renderDiet() {
-  const days = dietDaysSorted();
-  const weeks = dietWeeksSorted();
-  setHead('DIET LOG　减重执行', '减重执行',
-    '每天记一条饮食与晨重，每周复盘一次；记录越连续，趋势越可信',
-    `<button class="btn btn-primary" data-act="diet-day-add">${I.plus}记录今天</button>
-     <button class="btn" data-act="diet-week-add">写周复盘</button>`);
-
-  const remind = dietReminders(days, weeks);
-  const remindCard = remind.length ? `
-    <section class="card" style="border-left:3px solid #A9752F">
-      <div class="card-head"><h2>提醒</h2><span class="link">${I.info || ''}</span></div>
-      <ul style="margin:0;padding-left:18px;color:var(--muted-2);font-size:12.5px;line-height:1.9">
-        ${remind.map(m => `<li>${esc(m)}</li>`).join('')}
-      </ul>
-    </section>` : '';
-
-  const wPts = dietTrendPoints('morningWeight');
-  const kPts = dietTrendPoints('kcalCenter');
-  const trendCard = (wPts.length || kPts.length) ? `
-    <section class="card">
-      <div class="card-head"><h2>执行趋势</h2><span class="link">${days.length} 天 · ${weeks.length} 周</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
-        ${wPts.length ? `<div><div class="chart-title"><h2 style="font-size:12.5px">晨重（kg）</h2><p>仅统计填了晨重的天；缺测不补</p></div><div class="chart-box" id="dietWeightChart" style="min-height:200px"></div></div>` : ''}
-        ${kPts.length ? `<div><div class="chart-title"><h2 style="font-size:12.5px">每日摄入中心值（kcal）</h2><p>仅统计估算了摄入的天；数值为估算</p></div><div class="chart-box" id="dietKcalChart" style="min-height:200px"></div></div>` : ''}
-      </div>
-    </section>` : '';
-
-  const dayRows = days.map(d => {
-    const comp = d.completeness ? `<span class="chip chip-sm">${esc(d.completeness)}</span>` : '<span style="color:var(--muted-3)">—</span>';
-    const kcal = Number.isFinite(d.kcalCenter)
-      ? `${num(d.kcalCenter, 0)}${(Number.isFinite(d.kcalLow) && Number.isFinite(d.kcalHigh)) ? ` <small style="color:var(--muted-3)">(${num(d.kcalLow, 0)}–${num(d.kcalHigh, 0)})</small>` : ''}`
-      : '—';
-    const ank = [d.ankle, d.summary].filter(Boolean).join('；') || '—';
-    return `<tr>
-      <td class="date">${esc(d.date)}</td>
-      <td class="num">${Number.isFinite(d.morningWeight) ? num(d.morningWeight, 1) + '<span style="color:var(--muted-3);font-size:9px"> kg</span>' : '—'}</td>
-      <td class="num">${kcal}</td>
-      <td>${comp}</td>
-      <td style="color:var(--muted-2)">${esc(ank)}</td>
-      <td class="act"><button data-act="diet-day-edit" data-id="${esc(d.id)}">编辑</button><button class="danger" data-act="diet-day-del" data-id="${esc(d.id)}">删除</button></td>
-    </tr>`;
-  }).join('');
-  const dayCard = `
-    <section class="card">
-      <div class="card-head"><h2>每日记录</h2><span class="link">${days.length} 条</span></div>
-      ${!days.length ? `<div class="empty" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:22px 6px">
-          <p style="margin:0;color:var(--muted)">还没有每日记录。每天花一分钟记：晨重、三餐与饮料份量、当天摄入估算和「完整度」。空白一律表示「未记录」，不等于没吃；没吃请写「未吃」。</p>
-          <button class="btn btn-primary" data-act="diet-day-add">${I.plus}记录今天</button>
-        </div>`
-        : `<div class="table-wrap"><table class="data"><thead><tr><th>日期</th><th>晨重</th><th>摄入中心（范围）</th><th>完整度</th><th>活动 / 踝 / 小结</th><th></th></tr></thead><tbody>${dayRows}</tbody></table></div>
-           <p class="hint" style="margin-top:12px">「未记录」与「未吃」分开；运动热量不从摄入扣除。连续记录后趋势才有意义，单日涨跌不作为减餐依据。</p>`}
-    </section>`;
-
-  const weekRows = weeks.map(w => {
-    const span = [w.weekStart, w.weekEnd].filter(Boolean).join(' → ') || '—';
-    const avg = Number.isFinite(w.weightAvg) ? num(w.weightAvg, 1) + ' kg' : '—';
-    const kcal = Number.isFinite(w.kcalCenter) ? num(w.kcalCenter, 0) + ' kcal' : '—';
-    const cd = Number.isFinite(w.completeDays) ? num(w.completeDays, 0) + ' 天' : '—';
-    return `<tr>
-      <td class="date">${esc(span)}${w.reviewDate ? `<small style="color:var(--muted-3);display:block">复盘 ${esc(w.reviewDate)}</small>` : ''}</td>
-      <td class="num">${avg}</td>
-      <td class="num">${cd}</td>
-      <td class="num">${kcal}</td>
-      <td style="color:var(--muted-2)">${esc(w.nextFocus || w.observeDiff || '—')}</td>
-      <td class="act"><button data-act="diet-week-edit" data-id="${esc(w.id)}">编辑</button><button class="danger" data-act="diet-week-del" data-id="${esc(w.id)}">删除</button></td>
-    </tr>`;
-  }).join('');
-  const weekCard = `
-    <section class="card">
-      <div class="card-head"><h2>每周复盘</h2><span class="link">${weeks.length} 周</span></div>
-      ${!weeks.length ? `<div class="empty" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:22px 6px">
-          <p style="margin:0;color:var(--muted)">还没有每周复盘。每 7 天填一次：晨重均值、完整饮食天数、平均摄入与踝部反应，以及下周只改进的一件事。连续 2–3 周数据较完整后再判断是否调整。</p>
-          <button class="btn btn-primary" data-act="diet-week-add">写第一份周复盘</button>
-        </div>`
-        : `<div class="table-wrap"><table class="data"><thead><tr><th>周起止</th><th>晨重均值</th><th>完整饮食天数</th><th>平均摄入中心</th><th>下周重点</th><th></th></tr></thead><tbody>${weekRows}</tbody></table></div>`}
-    </section>`;
-
-  $('#view').innerHTML = `<div class="stack">${remindCard}${trendCard}${dayCard}${weekCard}</div>`;
-  if (wPts.length) { const host = $('#dietWeightChart'); if (host) echartsChart(host, { series: [{ name: '晨重', points: wPts }], unit: 'kg', height: 200 }); }
-  if (kPts.length) { const host = $('#dietKcalChart'); if (host) echartsChart(host, { series: [{ name: '摄入', points: kPts }], unit: 'kcal', height: 200 }); }
+  /* 兼容旧调用点与旧 #/diet 链接：统一切到「减重」聚合页的「饮食执行」段渲染。
+     每日记录 / 周复盘的增删改保存后都走这里，确保改完能在饮食执行段看到结果。 */
+  if (ui.slImSeg !== 'diet') ui.slImSeg = 'diet';
+  renderWeight();
 }
 
 /* ---------- 每日记录表单 ---------- */
