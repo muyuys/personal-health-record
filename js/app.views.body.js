@@ -237,9 +237,9 @@ function slImOverviewHTML() {
     <section class="card" style="border-left:3px solid #A9752F">
       <div class="card-head"><h2>关于两套体重口径</h2><span class="link">只读说明</span></div>
       <ul style="margin:0;padding-left:18px;color:var(--muted-2);font-size:12.5px;line-height:1.9">
-        <li><b>体重记录</b>（本页「体重与身体成分」段）：来自 <code>state.weights</code>，可含晨重 / 其他时段 / 自报 / 设备测量等多种条件，是体重与身体成分的主档。</li>
-        <li><b>每日晨重</b>（「饮食执行」段）：来自每日饮食记录里的 <code>morningWeight</code>，按标准晨重口径（晨起排尿后、进食前、同秤）逐日记。</li>
-        <li>两者是同一件事的两次录入、口径不同：<b>不自动合并、不互相覆盖</b>。看趋势时以同口径序列为准，勿把两套数值直接对比或平均。</li>
+        <li><b>每日晨重</b>：减重打卡用的体重，在「饮食执行」里逐日记录，按统一条件称量（晨起排尿后、进食前、同一台秤），用来看每天的变化与减重趋势。</li>
+        <li><b>就诊体重</b>：就诊时测得、随病历记下的体重，记录在「体重与身体成分」里，是病历资料的一部分。</li>
+        <li>两套口径的称量场景不同，数值本来就会有差别，所以各自独立记录、不自动合并、也不互相换算。看减重趋势以每日晨重为准；就诊引用体重时，以病历记录为准。</li>
       </ul>
     </section>`;
 }
