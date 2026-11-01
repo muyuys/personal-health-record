@@ -65,63 +65,6 @@ function medicationsTableHTML(filterVisitId) {
     </tr>`).join('')}</tbody></table></div>`;
 }
 
-function visitsTableHTML() {
-  const list = visitsSorted();
-  if (!list.length) return histEmpty('未记录就诊。就诊后可在此登记，并与检验报告、用药关联。');
-  return `<div class="table-wrap"><table class="data"><thead><tr>
-      <th>日期</th><th>类型 / 科室</th><th>医院 · 医生</th><th>诊断 / 主诉</th><th>用药</th><th></th></tr></thead><tbody>
-    ${list.map(v => {
-      const mn = medications.filter(m => m.visitId === v.id).length;
-      return `<tr>
-        <td class="date">${esc(v.date)}</td>
-        <td>${esc(v.visitType || '就诊')}${v.department ? `<small style="color:var(--muted-3);display:block">${esc(v.department)}</small>` : ''}</td>
-        <td>${esc([v.hospital, v.doctor].filter(Boolean).join(' · ') || '—')}</td>
-        <td>${esc(v.diagnosis || v.chief || '—')}${v.summary ? `<small style="color:var(--muted-3);display:block">${esc(v.summary).slice(0, 100)}</small>` : ''}</td>
-        <td>${mn ? mn + ' 项' : '—'}</td>
-        <td class="act"><button data-act="visit-summary" data-id="${esc(v.id)}">摘要</button><button data-act="visit-edit" data-id="${esc(v.id)}">详情 / 编辑</button><button class="danger" data-act="visit-del" data-id="${esc(v.id)}">删除</button></td>
-      </tr>`;
-    }).join('')}</tbody></table></div>`;
-}
-
-/* 空状态：引导登记真实就诊，并给一份明确标注的占位示例（仅格式示意，非真实病历） */
-function visitEmptyGuideHTML() {
-  return `<div class="empty" style="text-align:left">
-    <p style="margin:0 0 8px"><strong>还没有就诊实例。</strong>就诊后请点「登记就诊」按实际填写；本页只存真实就诊，不臆测诊断或用药。</p>
-    <p class="hint" style="margin:0 0 10px">下面是一条<strong>示例（格式示意，非真实就诊，请勿照抄）</strong>，可先看一眼字段再录入：</p>
-    <div class="table-wrap"><table class="data" style="width:100%"><thead><tr>
-      <th>日期</th><th>类型 / 科室</th><th>医院 · 医生</th><th>诊断 / 主诉</th><th>用药</th></tr></thead>
-      <tbody><tr>
-        <td class="date">YYYY-MM-DD</td>
-        <td>门诊<br><small style="color:var(--muted-3)">【示例·待填】科室</small></td>
-        <td>【示例·待填】医院 · 医生</td>
-        <td>【示例·待填】诊断或主诉<small style="color:var(--muted-3);display:block">【示例·待填】处置 / 医嘱 / 复诊安排</small></td>
-        <td>—</td>
-      </tr></tbody></table></div>
-    <div class="form-actions" style="margin-top:12px">
-      <button class="btn btn-primary" data-act="visit-add">${I.plus}登记真实就诊</button>
-      <button class="btn btn-ghost" data-act="visit-sample">按示例草稿新建（待填）</button>
-    </div>
-  </div>`;
-}
-
-function renderVisits() {
-  setHead('VISITS　就诊记录', '就诊记录',
-    '按就诊日期记录门诊 / 急诊 / 住院，可关联检验报告与用药',
-    `<button class="btn btn-primary" data-act="visit-add">${I.plus}登记就诊</button>
-     <button class="btn btn-ghost" data-act="go" data-to="summary">${I.download}就诊摘要</button>`);
-  const body = visits.length
-    ? `${visitsTableHTML()}
-        <p class="hint" style="margin-top:12px">主诉 / 诊断 / 小结会在「检查时间线」按日期出现；用药可在就诊详情里关联，形成完整就诊摘要。</p>`
-    : visitEmptyGuideHTML();
-  $('#view').innerHTML = `
-    <div class="stack">
-      <section class="card">
-        <div class="card-head"><h2>就诊实例</h2><span class="link">${visits.length} 次</span></div>
-        ${body}
-      </section>
-    </div>`;
-}
-
 /* ======================= 渲染：就诊摘要导出 =======================
    任务 017：把某次就诊或某时间段的「就诊 + 检验 + 用药 + 待复诊」汇成一页，
    供打印 / 导出 PDF。只汇总已记录内容，缺项显式标注「待填 / 未记录」，不推测、不编造。 */

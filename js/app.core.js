@@ -19,6 +19,9 @@ const svgEl = (tag, attrs) => {
 
 /* ======================= 图标 ======================= */
 const I = {
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.6L12 4l8 6.6V20a1 1 0 01-1 1h-4.5v-6h-5v6H5a1 1 0 01-1-1v-9.4z" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8.5h3l1.4-2h7.2L17 8.5h3a1 1 0 011 1V19a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5a1 1 0 011-1z" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.4"/></svg>',
   grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.6 2.6L16.2 9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   pulse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12.5h4l2.8-7.5 4 15 2.7-7.5h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -144,7 +147,13 @@ const ui = {
   openDetails: {},
   /* 「减重」聚合页当前分段（内存态）：overview / weight / diet / review。
      既可由页内 chip 切换，也可由旧 #/diet 链接映射到 diet 段。 */
-  slImSeg: 'overview'
+  slImSeg: 'overview',
+  /* 就医记录：日期/搜索面板是否展开（筛选条件本身在 URL，不在这里） */
+  recFilterOpen: false,
+  /* 搜索框防抖句柄 */
+  recQTimer: null,
+  /* 刚刚保存的记录 {kind,id}：列表渲染一次高亮后清空，不入库 */
+  flash: null
 };
 
 /* 默认每页条数可选项 */

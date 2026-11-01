@@ -23,6 +23,115 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
 }
 
+/* ---------- 「记一笔」入口弹层（027 §6） ---------- */
+/* 页头那个唯一的实底按钮只负责「开个口子」，不预设记录类型：
+   三个动作在这里并列，不替用户决定先记什么。 */
+function openRecordPicker(mode = '') {
+  if (mode === 'visit') { closeModal(); goHash('#/new-visit?from=' + encodeURIComponent(location.hash || '#/home')); return; }
+  if (mode === 'report') { closeModal(); goHash('#/new-report?from=' + encodeURIComponent(location.hash || '#/home')); return; }
+  if (mode === 'daily') { openRecord('weight'); return; }   /* 日常数据：走原有类型选择 */
+
+  const row = (m, icon, title, desc) => `
+    <button class="row sheet-item" type="button" data-act="record-pick" data-mode="${m}">
+      <span class="row-icon">${icon}</span>
+      <span class="row-main">
+        <span class="row-title">${title}</span>
+        <span class="row-sub">${desc}</span>
+      </span>
+      <span class="row-act">${I.chevron}</span>
+    </button>`;
+
+  openModal(`
+    <div class="modal-head">
+      <div><h2>记一笔</h2><p>先记下来就行，细节以后都能补。</p></div>
+      <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button>
+    </div>
+    <div class="sheet-list">
+      ${row('visit', I.plus, '一次就诊', '就诊日期 + 一段记录，之后可补诊断、用药和资料')}
+      ${row('report', I.file, '一份报告', '先把原件存进来，日期不确定也可以留空')}
+      ${row('daily', I.pulse, '日常数据', '体重、围度、血压、症状、睡眠')}
+    </div>`,
+    'modal--sheet');
+}
+
+/* 菜单里点一项：不复制业务逻辑，直接触发同名的 data-act，
+   保证「菜单里删除」和「页面里删除」走的是同一条路径。 */
+function triggerAct(act, dataset) {
+  const b = document.createElement('button');
+  b.dataset.act = act;
+  Object.keys(dataset || {}).forEach(k => { b.dataset[k] = dataset[k]; });
+  b.style.display = 'none';
+  document.body.appendChild(b);
+  b.click();
+  b.remove();
+}
+
+/* 记录卡右上「更多」：只列这条记录真的能做的事（027 §4.3） */
+function openRecordMenu(kind, id) {
+  const back = location.hash || '#/home';
+  const items = [];   /* {label, run} */
+  const pick = q => (kind === 'visit' ? visitById(id)
+    : kind === 'report' ? reportById(id)
+    : kind === 'med' ? medications.find(x => x.id === id)
+    : kind === 'weight' ? state.weights.find(x => x.id === id)
+    : kind === 'vital' ? vitals.find(x => x.id === id)
+    : kind === 'symptom' ? state.symptoms.find(x => x.id === id)
+    : kind === 'sleep' ? sleepLogs.find(x => x.id === id)
+    : null);
+
+  if (kind === 'visit') {
+    const v = pick();
+    if (!v) return;
+    items.push(['查看这次就诊', () => goHash('#/visit?id=' + encodeURIComponent(v.id) + '&back=' + encodeURIComponent(back))]);
+    items.push(['修改记录内容', () => goHash('#/visit?id=' + encodeURIComponent(v.id) + '&edit=1&back=' + encodeURIComponent(back))]);
+    items.push(['删除这次就诊', () => triggerAct('visit-del', { id: v.id })]);
+  } else if (kind === 'report') {
+    const rp = pick();
+    if (!rp) return;
+    items.push(['查看报告信息', () => triggerAct('editreport', { id: rp.id })]);
+    if (rp.file) items.push(['打开原件', () => triggerAct('vieworiginal', { id: rp.id })]);
+    items.push(['删除这份报告', () => triggerAct('delreport', { id: rp.id })]);
+  } else if (kind === 'med') {
+    const m = pick();
+    if (!m) return;
+    items.push(['修改用药', () => triggerAct('med-edit', { id: m.id })]);
+    items.push(['删除用药', () => triggerAct('med-del', { id: m.id })]);
+  } else if (kind === 'lab') {
+    items.push(['查看检验指标', () => goHash('#/labs')]);
+  } else if (kind === 'legacy') {
+    return;   /* 历史档案只读，没有可执行动作 */
+  } else {
+    const rec = pick();
+    if (!rec) return;
+    const editAct = { weight: 'weight-edit', vital: 'vital-edit', symptom: 'symptom-edit' }[kind];
+    const delAct = { weight: 'weight-del', vital: 'vital-del', symptom: 'symptom-del', sleep: 'sleep-del' }[kind];
+    const seg = { weight: 'body', vital: 'vitals', symptom: 'symptoms', sleep: 'sleep' }[kind];
+    if (seg) items.push(['去日常健康里看', () => goHash('#/daily?seg=' + seg)]);
+    if (editAct) items.push(['修改这条记录', () => triggerAct(editAct, { id: rec.id })]);
+    if (delAct) items.push(['删除这条记录', () => triggerAct(delAct, { id: rec.id })]);
+  }
+  if (!items.length) return;
+
+  openModal(`
+    <div class="modal-head">
+      <div><h2>这条记录</h2><p>${esc(kind === 'visit' ? '就诊记录' : kind === 'report' ? '报告' : kind === 'med' ? '用药' : kind === 'lab' ? '检验指标' : '日常数据')}</p></div>
+      <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button>
+    </div>
+    <div class="sheet-list">
+      ${items.map(([label, run], i) => `<button class="row sheet-item" type="button" data-menu-i="${i}">
+        <span class="row-main"><span class="row-title">${esc(label)}</span></span>
+      </button>`).join('')}
+    </div>`, 'modal--sheet');
+
+  $$('[data-menu-i]').forEach(b => {
+    b.addEventListener('click', () => {
+      const item = items[parseInt(b.dataset.menuI, 10)];
+      closeModal();
+      if (item) item[1]();
+    });
+  });
+}
+
 /* ---------- 记录一次 ---------- */
 function openRecord(kind = 'weight', presetDate) {
   openModal(`
@@ -30,11 +139,11 @@ function openRecord(kind = 'weight', presetDate) {
       <div><h2>记录一次</h2><p>${storeMode === 'server' ? '记录会写进本机数据库 data/health.db' : '本机服务没连上，记录只存在当前浏览器'}</p></div>
       <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button>
     </div>
-    <div class="tabs">
-      <button data-act="tab" data-k="weight" class="${kind === 'weight' ? 'on' : ''}">体重</button>
-      <button data-act="tab" data-k="body" class="${kind === 'body' ? 'on' : ''}">胸腰臀围度</button>
-      <button data-act="tab" data-k="lab" class="${kind === 'lab' ? 'on' : ''}">检验结果</button>
-      <button data-act="tab" data-k="todo" class="${kind === 'todo' ? 'on' : ''}">待办提醒</button>
+    <div class="chip-tabs" role="tablist" aria-label="日常数据类型">
+      <button class="chip-tab${kind === 'weight' ? ' is-on' : ''}" role="tab" aria-selected="${kind === 'weight'}" data-act="tab" data-k="weight">体重</button>
+      <button class="chip-tab${kind === 'body' ? ' is-on' : ''}" role="tab" aria-selected="${kind === 'body'}" data-act="tab" data-k="body">胸腰臀围度</button>
+      <button class="chip-tab${kind === 'lab' ? ' is-on' : ''}" role="tab" aria-selected="${kind === 'lab'}" data-act="tab" data-k="lab">检验结果</button>
+      <button class="chip-tab${kind === 'todo' ? ' is-on' : ''}" role="tab" aria-selected="${kind === 'todo'}" data-act="tab" data-k="todo">待办提醒</button>
     </div>
     <div id="modalBody"></div>`);
   renderRecordBody(kind, presetDate);
@@ -98,7 +207,7 @@ function renderRecordBody(kind, presetDate) {
         ${openTodos().slice(0, 6).map(t => `<button class="sr-item" data-act="go-todo" data-id="${t.id}" style="border:1px solid var(--line-3);border-radius:9px">
           <span class="badge">${esc(t.group)}</span><span>${esc(t.text)}</span></button>`).join('') || '<div class="empty">暂无未完成待办</div>'}
       </div>
-      <div class="form-actions"><button class="btn btn-ghost" data-act="close">关闭</button><button class="btn btn-primary" data-act="todo-add">${I.plus}添加待办</button><button class="btn btn-primary" data-act="go" data-to="todo">打开待办页</button></div>`;
+      <div class="form-actions"><button class="btn btn-ghost" data-act="go" data-to="todos">打开待办页</button><button class="btn btn-primary" data-act="todo-add">${I.plus}添加待办</button></div>`;
   }
 }
 

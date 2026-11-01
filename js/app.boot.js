@@ -12,11 +12,22 @@ document.addEventListener('click', e => {
   const act = el.dataset.act;
 
   switch (act) {
-    case 'go':
+    case 'go': {
+      /* 速记/存报告页有未保存内容时先确认，不放用户走掉（027 §9.8） */
+      const target = '#/' + (el.dataset.to || '');
+      if (composerLeaveGuard(target)) break;
       closeModal();
-      location.hash = '#/' + el.dataset.to;
+      goHash(target);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       break;
+    }
+    case 'back': {
+      const back = el.dataset.back || '';
+      if (back) { goHash(decodeURIComponent(back)); break; }
+      if (history.length > 1) { history.back(); break; }
+      goHash('#/records');
+      break;
+    }
     case 'issue':
       closeModal();
       ui.issue = el.dataset.id;
@@ -87,10 +98,119 @@ document.addEventListener('click', e => {
       break;
     }
     case 'record':
-      openRecord(el.dataset.kind || 'weight');
+      openRecordPicker(el.dataset.mode || '');
       break;
+    case 'record-pick': {
+      const m = el.dataset.mode || '';
+      closeModal();
+      if (m === 'visit') goHash('#/new-visit?from=' + encodeURIComponent(location.hash || '#/home'));
+      else if (m === 'report') goHash('#/new-report?from=' + encodeURIComponent(location.hash || '#/home'));
+      else openRecord('weight');
+      break;
+    }
+    case 'fold': {
+      const btn = el;
+      const body = document.getElementById('fold-' + btn.dataset.fold);
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (body) body.hidden = !open;
+      break;
+    }
+    case 'rec-t':
+      writeRecordsQuery({ t: el.dataset.v, p: 1 });
+      break;
+    case 'rec-page': {
+      const p = parseInt(el.dataset.p, 10);
+      if (Number.isFinite(p) && p > 0) writeRecordsQuery({ p });
+      break;
+    }
+    case 'rec-filter':
+      ui.recFilterOpen = !ui.recFilterOpen;
+      renderRecords();
+      break;
+    case 'rec-clear':
+      ui.recFilterOpen = false;
+      writeRecordsQuery({ t: 'all', q: '', from: '', to: '', p: 1 });
+      break;
+    case 'rec-more':
+      openRecordMenu(el.dataset.kind, el.dataset.id);
+      break;
+    case 'composer-save':
+      saveVisitComposer();
+      break;
+    case 'composer-cancel': {
+      const to = (visitComposer && visitComposer.from) || (reportComposer && reportComposer.from) || '#/records';
+      if (!composerLeaveGuard(to)) {
+        visitComposer = null;
+        reportComposer = null;
+        goHash(to);
+      }
+      break;
+    }
+    case 'cl-stay':
+      closeModal();
+      break;
+    case 'cl-discard': {
+      const to = el.dataset.to || '#/records';
+      visitComposer = null;
+      reportComposer = null;
+      closeModal();
+      goHash(to);
+      break;
+    }
+    case 'cv-file-del':
+      if (visitComposer) {
+        visitComposer.files.splice(Number(el.dataset.i), 1);
+        refreshComposerFiles();
+      }
+      break;
+    case 'rp-file-del':
+      if (reportComposer) {
+        reportComposer.files.splice(Number(el.dataset.i), 1);
+        refreshReportThumbs();
+      }
+      break;
+    case 'rp-ocr':
+      extractReportText();
+      break;
+    case 'report-save':
+      saveReportComposer();
+      break;
+    case 'visit-link-report': {
+      const v = visitById(el.dataset.id);
+      if (!v) break;
+      if (!reports.length) { toast('还没有可关联的报告，先存一份'); break; }
+      const id = prompt('填要关联的报告 id（在报告列表里可查）：\n' + reports.map(r => `${r.id}　${r.date || '日期未确认'}　${r.title || '未命名报告'}`).join('\n'), '');
+      if (!id) break;
+      if (!reportById(id)) { toast('没找到这份报告'); break; }
+      if (v.reportId && v.reportId !== id) {
+        const old = reportById(v.reportId);
+        if (!confirm(`这次就诊已关联《${old ? old.title : '原来那份'}》。替换为《${reportById(id).title}》？原来那份仍会保留在报告列表里。`)) break;
+      }
+      visits = visits.map(x => x.id === v.id ? Object.assign({}, x, { reportId: id }) : x);
+      persistHistory();
+      route();
+      toast('已关联');
+      break;
+    }
+    case 'med-add-for-visit': {
+      const v = visitById(el.dataset.id);
+      openMedicationForm(null, v ? { visitId: v.id, startDate: v.date } : null);
+      break;
+    }
+    case 'todo-add-for-visit': {
+      const v = visitById(el.dataset.id);
+      openTodoForm(null, v ? {
+        groupName: visitGroupName(v), meta: `关联 ${v.department || '就诊'}`
+      } : null);
+      break;
+    }
     case 'tab':
-      $$('.tabs button').forEach(b => b.classList.toggle('on', b === el));
+      $$('.chip-tab').forEach(b => {
+        const on = b === el;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
       renderRecordBody(el.dataset.k);
       break;
     case 'newlab':
@@ -285,14 +405,12 @@ document.addEventListener('click', e => {
       deleteHistory(el.dataset.kind, el.dataset.id);
       break;
     case 'visit-add':
-      openVisitForm(null);
-      break;
-    case 'visit-sample':
-      openVisitForm(null, visitSampleDraft());
+      /* 独立页面（027 §9.2）：不再用弹层，也不再提供「按示例草稿新建」 */
+      goHash('#/new-visit?from=' + encodeURIComponent(location.hash || '#/records'));
       break;
     case 'visit-edit': {
       const v = visitById(el.dataset.id);
-      if (v) openVisitForm(v);
+      if (v) goHash(`#/visit?id=${encodeURIComponent(v.id)}&edit=1&back=${encodeURIComponent(location.hash || '')}`);
       break;
     }
     case 'visit-del':
@@ -476,12 +594,9 @@ document.addEventListener('click', e => {
     case 'close':
       closeModal();
       break;
-    case 'more':
-      openMore();
-      break;
     case 'go-todo':
       closeModal();
-      location.hash = '#/todo';
+      goHash('#/todos');
       break;
     default:
       break;
@@ -629,81 +744,6 @@ function deleteHistory(kind, id) {
   toast('已删除');
 }
 
-/* ---------- 就诊实例：表单与增删改 ---------- */
-function visitFormFields(v) {
-  const r = v || {
-    date: todayISO(), visitType: '门诊', department: '', hospital: '', doctor: '',
-    chief: '', diagnosis: '', summary: '', reportId: '', note: ''
-  };
-  const reportOpts = ['<option value="">（不关联）</option>'].concat(
-    reports.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(rp =>
-      `<option value="${esc(rp.id)}" ${r.reportId === rp.id ? 'selected' : ''}>${esc(rp.date)}　${esc(rp.title)}</option>`)).join('');
-  return `<div class="form-grid">
-    <div class="field"><label>就诊日期 <b>*</b></label><input type="date" name="date" value="${esc(r.date)}" required></div>
-    <div class="field"><label>类型</label><select name="visitType">${VISIT_TYPES.map(t => `<option value="${t}" ${r.visitType === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-    <div class="field"><label>科室</label><input name="department" value="${esc(r.department)}" maxlength="40" placeholder="如 眼科、足踝外科"></div>
-    <div class="field"><label>医院</label><input name="hospital" value="${esc(r.hospital)}" maxlength="60"></div>
-    <div class="field"><label>医生</label><input name="doctor" value="${esc(r.doctor)}" maxlength="40"></div>
-    <div class="field wide"><label>关联报告</label><select name="reportId">${reportOpts}</select></div>
-    <div class="field wide"><label>主诉</label><input name="chief" value="${esc(r.chief)}" maxlength="300" placeholder="本次就诊的主要症状 / 原因"></div>
-    <div class="field wide"><label>诊断</label><input name="diagnosis" value="${esc(r.diagnosis)}" maxlength="300" placeholder="医生给出的诊断（没有就留空，不推测）"></div>
-    <div class="field wide"><label>就诊小结</label><textarea name="summary" rows="3" maxlength="1000" placeholder="处置、医嘱、复诊安排等">${esc(r.summary)}</textarea></div>
-    <div class="field wide"><label>备注</label><input name="note" value="${esc(r.note)}" maxlength="300"></div>
-  </div>`;
-}
-
-function visitSampleDraft() {
-  return {
-    date: todayISO(), visitType: '门诊',
-    department: '【示例·待填】如 眼科',
-    hospital: '【示例·待填】医院名称',
-    doctor: '【示例·待填】医生姓名',
-    chief: '【示例·待填】本次就诊的主要症状 / 原因',
-    diagnosis: '【示例·待填】医生给出的诊断（没有就留空，不推测）',
-    summary: '【示例·待填】处置、医嘱、复诊安排等',
-    reportId: '',
-    note: '示例草稿：请把【示例·待填】替换为真实内容后再保存。'
-  };
-}
-
-function openVisitForm(rec, sample) {
-  const isEdit = !!rec;
-  const init = rec || sample || null;
-  const linked = isEdit ? medications.filter(m => m.visitId === rec.id) : [];
-  openModal(`
-    <div class="modal-head"><div><h2>${isEdit ? '编辑就诊记录' : '登记就诊'}</h2><p>结构化保存，可在时间线与就诊摘要引用</p></div>
-    <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button></div>
-    <form id="visitForm">
-      ${visitFormFields(init)}
-      ${sample && !isEdit ? `<div class="notice" style="margin-top:12px">${I.info}<p>这是一条<b>示例草稿</b>，字段里的「【示例·待填】」只是格式示意，请改成真实内容；不确定的字段直接留空，不要编造。</p></div>` : ''}
-      ${isEdit ? `<div class="notice" style="margin-top:12px">${I.info}<p><b>本次就诊用药：</b>${linked.length ? linked.map(m => esc(m.name) + (m.dose ? `（${esc(m.dose)}）` : '')).join('、') : '未登记（可在「用药记录」里添加并关联本次就诊）'}</p></div>` : ''}
-      <div class="form-actions">
-        <button class="btn btn-primary" type="submit">保存</button>
-        <button class="btn btn-ghost" type="button" data-act="close">取消</button>
-        ${isEdit ? `<button class="btn btn-ghost btn-danger" type="button" data-act="visit-del" data-id="${esc(rec.id)}">删除这条</button>` : ''}
-      </div>
-    </form>`);
-  $('#visitForm').addEventListener('submit', e => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const date = fd.get('date');
-    if (!date) { toast('请填写就诊日期'); return; }
-    const obj = normVisit({
-      id: rec ? rec.id : newId('vis'), date,
-      visitType: fd.get('visitType'), department: fd.get('department'),
-      hospital: fd.get('hospital'), doctor: fd.get('doctor'),
-      chief: fd.get('chief'), diagnosis: fd.get('diagnosis'), summary: fd.get('summary'),
-      reportId: fd.get('reportId'), note: fd.get('note'),
-      createdAt: rec ? rec.createdAt : Date.now()
-    });
-    visits = rec ? visits.map(x => x.id === rec.id ? obj : x) : [obj, ...visits];
-    persistHistory();
-    closeModal();
-    route();
-    toast('已保存');
-  });
-}
-
 function deleteVisit(id) {
   const rec = visitById(id);
   if (!rec) return;
@@ -742,13 +782,17 @@ function medicationFormFields(m) {
   </div>`;
 }
 
-function openMedicationForm(rec) {
+function openMedicationForm(rec, prefill) {
   const isEdit = !!rec;
+  const base = {
+    name: '', dose: '', frequency: '', route: '', startDate: todayISO(), endDate: '',
+    purpose: '', status: 'active', note: '', infoDate: '', sourceRef: '', toVerify: '', visitId: ''
+  };
   openModal(`
     <div class="modal-head"><div><h2>${isEdit ? '编辑用药' : '新增用药'}</h2><p>记录剂量、频次与起止，历史用药不自动视为当前用药</p></div>
     <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button></div>
     <form id="medForm">
-      ${medicationFormFields(rec)}
+      ${medicationFormFields(rec || Object.assign(base, prefill || {}))}
       <div class="form-actions">
         <button class="btn btn-primary" type="submit">保存</button>
         <button class="btn btn-ghost" type="button" data-act="close">取消</button>
@@ -795,9 +839,13 @@ function todoGroupNames(cur) {
   if (cur) set.add(cur);
   return Array.from(set);
 }
-function openTodoForm(rec) {
+function openTodoForm(rec, prefill) {
   const isEdit = !!rec;
-  const r = rec || { text: '', groupName: '我新增的待办', meta: '', flag: false, dueDate: '', followType: 'visit' };
+  const r = rec || prefill || { text: '', groupName: '我新增的待办', meta: '', flag: false, dueDate: '', followType: 'visit' };
+  const lockedGroup = !!(prefill && prefill.groupName);   // 从就诊详情进入：分组名由系统写死
+  if (!rec && prefill && prefill.groupName) {
+    r.text = ''; r.meta = prefill.meta || ''; r.flag = false; r.dueDate = ''; r.followType = 'visit';
+  }
   const curType = FOLLOW_TYPES.some(t => t.k === r.followType) ? r.followType : 'visit';
   openModal(`
     <div class="modal-head"><div><h2>${isEdit ? '编辑待办' : '添加待办'}</h2><p>保存到本机数据库；勾选状态与静态待办共用一张表</p></div>
@@ -806,7 +854,7 @@ function openTodoForm(rec) {
       <div class="form-grid">
         <div class="field wide"><label>待办内容 <b>*</b></label><input name="text" value="${esc(r.text)}" maxlength="200" required placeholder="如 眼科复查：确认流泪刺痛是否改善"></div>
         <div class="field"><label>随访类型</label><select name="followType">${FOLLOW_TYPES.map(t => `<option value="${t.k}" ${curType === t.k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></div>
-        <div class="field"><label>分组</label><input name="groupName" list="todoGroups" value="${esc(r.groupName || '我新增的待办')}" maxlength="40"><datalist id="todoGroups">${todoGroupNames(r.groupName || '我新增的待办').map(g => `<option value="${esc(g)}"></option>`).join('')}</datalist></div>
+        <div class="field"><label>分组</label><input name="groupName" list="todoGroups" value="${esc(r.groupName || '我新增的待办')}" maxlength="40"${lockedGroup ? ' readonly aria-readonly="true"' : ''}><datalist id="todoGroups">${todoGroupNames(r.groupName || '我新增的待办').map(g => `<option value="${esc(g)}"></option>`).join('')}</datalist>${lockedGroup ? '<span class="field-hint">由这次就诊自动填写，不可编辑。</span>' : ''}</div>
         <div class="field"><label>备注</label><input name="meta" value="${esc(r.meta)}" maxlength="120" placeholder="如 科室、时间、要带的材料"></div>
         <div class="field"><label>到期日 <span style="color:var(--muted-3);font-weight:400">（可留空，用于首页提醒）</span></label><input type="date" name="dueDate" value="${esc(r.dueDate || '')}"></div>
         <div class="field wide"><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" name="flag" style="width:auto" ${r.flag ? 'checked' : ''}> 标记为重点（列表里高亮）</label></div>
@@ -894,25 +942,6 @@ function openIssueForm(issue) {
   });
 }
 
-function openMore() {
-  const items = [
-    ['timeline', '检查时间线', 'clock'],
-    ['labs-all', '全部检验记录', 'file'],
-    ['meds', '用药记录', 'pill'],
-    ['weight', '减重记录', 'trend'],
-    ['diet', '减重执行', 'symptom'],
-    ['symptoms', '症状日记', 'symptom'],
-    ['summary', '就诊摘要导出', 'download'],
-    ['profile', '个人资料与备份', 'user']
-  ];
-  openModal(`
-    <div class="modal-head"><div><h2>更多</h2><p>档案目录</p></div>
-    <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button></div>
-    ${items.map(([to, label, icon]) => `<button class="sheet-item" data-act="go" data-to="${to}">${I[icon]}<span>${label}</span></button>`).join('')}
-    <button class="sheet-item" data-act="export">${I.download}<span>导出备份</span></button>
-    <button class="sheet-item" data-act="import">${I.upload}<span>导入数据</span></button>
-    <p class="hint" style="margin-top:14px">数据只保存在本机浏览器；清除浏览器数据会丢失记录。</p>`);
-}
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
@@ -932,30 +961,50 @@ window.addEventListener('resize', () => {
   }, 180);
 });
 
-/* ======================= 路由 ======================= */
+/* ======================= 路由（027 §2.1） ======================= */
 const ROUTES = {
-  overview: { render: renderOverview, label: '总览' },
-  issues: { render: renderIssues, label: '健康问题' },
+  home: { render: renderHome, label: '首页' },
+  records: { render: renderRecords, label: '就医记录' },
+  visit: { render: renderVisitPage, label: '就诊详情' },
+  'new-visit': { render: renderVisitComposer, label: '记一次就诊' },
+  'new-report': { render: renderReportComposer, label: '存一份报告' },
+  daily: { render: renderDailyShell, label: '日常健康' },
+  themes: { render: renderThemesShell, label: '健康主题' },
+  theme: { render: renderThemeShell, label: '健康主题' },
+  me: { render: renderMeShell, label: '我的' },
+  todos: { render: renderTodos, label: '待办与提醒' },
   labs: { render: renderLabs, label: '检验指标' },
   'labs-all': { render: renderLabAll, label: '全部检验记录' },
-  timeline: { render: renderTimeline, label: '检查时间线' },
-  visits: { render: renderVisits, label: '就诊记录' },
-  summary: { render: renderSummary, label: '就诊摘要导出' },
-  meds: { render: renderMeds, label: '用药记录' },
-  todo: { render: renderTodos, label: '随访与待办' },
-  weight: { render: renderWeight, label: '减重' },
-  diet: { render: renderDiet, label: '减重' },
-  sleep: { render: renderSleep, label: '睡眠' },
-  vitals: { render: renderVitals, label: '生命体征' },
-  symptoms: { render: renderSymptoms, label: '症状日记' },
-  profile: { render: renderProfile, label: '个人资料' }
+  summary: { render: renderSummaryPage, label: '就诊摘要' }
+};
+
+/* 旧链接全部静默重定向到新结构（027 §2.2）：12 个旧 hash 一个都不能白屏 */
+const ALIAS = {
+  overview: '/home',
+  timeline: '/records',
+  visits: '/records?t=visit',
+  meds: '/records?t=med',
+  issues: '/themes',
+  todo: '/todos',
+  profile: '/me',
+  weight: '/daily?seg=body',
+  diet: '/daily?seg=body&tab=diet',
+  vitals: '/daily?seg=vitals',
+  symptoms: '/daily?seg=symptoms',
+  sleep: '/daily?seg=sleep'
 };
 
 function currentPage() {
-  const h = location.hash.replace(/^#\/?/, '').split('?')[0];
-  // 旧 #/diet 链接兼容：映射到「减重」聚合页，并选中「饮食执行」段（不 404）
-  if (h === 'diet') { ui.slImSeg = 'diet'; return 'weight'; }
-  return ROUTES[h] ? h : 'overview';
+  const raw = String(location.hash || '').replace(/^#\/?/, '');
+  const key = raw.split('?')[0];
+  if (ALIAS[key]) {
+    const target = ALIAS[key];
+    /* 静默改写地址栏：replaceState 不触发 hashchange，不会死循环；
+       file:// 下可能抛错，降级为「渲染目标页但不改写 URL」 */
+    try { history.replaceState(null, '', '#' + target); } catch (e) { /* 忽略 */ }
+    return target.replace(/^\/?/, '').split('?')[0];
+  }
+  return ROUTES[key] ? key : 'home';
 }
 
 function route() {
@@ -963,10 +1012,10 @@ function route() {
   applyLabDerived();   // 每次渲染前从数据库化验重算检验结论，保证问题总表/总览不缺漏、不过期
   applyIssueOverrides(); // 叠加用户「页内修改的问题状态 / 备注」
   const page = currentPage();
-  ROUTES[page].render();
+  (ROUTES[page] || ROUTES.home).render();
   syncChrome(page);
-  document.title = `${ROUTES[page].label} · 个人健康档案`;
-  // 搜索框（仅总览存在）
+  document.title = `${(ROUTES[page] || ROUTES.home).label} · 健康档案`;
+  // 搜索框（仅首页存在内联输入框）
   const s = $('#searchInput');
   if (s) {
     s.addEventListener('focus', () => { openSearch(); s.blur(); });
@@ -1098,24 +1147,59 @@ document.addEventListener('change', e => {
 });
 
 window.addEventListener('hashchange', () => {
+  /* 速记 / 存报告页有未保存内容时，浏览器回退也要拦一次：
+     先把地址静默还原（replaceState 不触发 hashchange），再弹确认（027 §9.8）。
+     两个编辑器的状态对象必须在离开时清掉——否则用户没填东西就去了别的页面后，
+     残留对象会在全站任意一次 hash 变化时拿不存在的表单 DOM 出来比较，误判为脏。 */
+  const target = location.hash;
+  const targetIsEditor = /^#\/(new-visit|new-report|visit\?)/.test(target);
+  if (visitComposer || reportComposer) {
+    const dirty = composerDirty() || reportDirty();
+    if (dirty) {
+      history.replaceState(null, '', editorHash());
+      composerLeaveGuard(target);
+      return;
+    }
+    /* 没有未保存内容：离开编辑器就清空两个状态；切换编辑器也把另一个清掉，
+       避免「从速记切到存报告」后速记对象还挂着（renderReportComposer 不负责清它）。 */
+    if (!targetIsEditor) {
+      visitComposer = null;
+      reportComposer = null;
+    } else if (visitComposer && target.startsWith('#/new-report')) {
+      visitComposer = null;
+    } else if (reportComposer && /^#\/(new-visit|visit\?)/.test(target)) {
+      reportComposer = null;
+    }
+  }
   route();
   window.scrollTo({ top: 0, behavior: 'auto' });
 });
 
-/* 侧栏的存储状态：说清楚这份数据此刻到底在哪儿 */
+/* 当前编辑器地址（速记页 / 存报告页） */
+function editorHash() {
+  if (visitComposer) {
+    return visitComposer.id
+      ? `#/visit?id=${encodeURIComponent(visitComposer.id)}&edit=1&back=${encodeURIComponent(visitComposer.from || '')}`
+      : `#/new-visit?from=${encodeURIComponent(visitComposer.from || '')}`;
+  }
+  if (reportComposer) return `#/new-report?from=${encodeURIComponent(reportComposer.from || '')}`;
+  return '#/home';
+}
+
+/* 侧栏的存储状态：说清楚这份数据此刻到底在哪儿（点开进「我的」看详情） */
 function syncStoreRail() {
-  const dot = $('#storeDot'), label = $('#storeLabel'), hint = $('#storeHint');
-  if (!dot || !label || !hint) return;
+  const dot = $('#storeDot'), label = $('#storeLabel'), line = $('.store-line');
+  if (!dot || !label) return;
   if (storeMode === 'server') {
-    dot.classList.toggle('off', syncBad);
-    label.textContent = syncBad ? '数据库写入失败' : '数据已入本机库';
-    hint.textContent = syncBad
-      ? '最后一次改动可能没存下，检查服务窗口后重试。'
-      : '存于 data/health.db，不在浏览器里；删掉这个文件才会丢。';
+    dot.classList.toggle('off', !!syncBad);
+    label.textContent = syncBad ? '写入失败，去「我的」重试' : '数据已入本机库';
+    if (line) line.setAttribute('aria-label', syncBad
+      ? '数据写入失败，点开查看存储与帮助'
+      : '数据已存入本机数据库，点开查看存储与帮助');
   } else {
     dot.classList.toggle('off', true);
-    label.textContent = '浏览器存储模式';
-    hint.textContent = '本机服务没启动，改动只存在浏览器，换设备会丢。';
+    label.textContent = '仅存在浏览器里';
+    if (line) line.setAttribute('aria-label', '本机服务没启动，数据只存在浏览器，点开查看存储与帮助');
   }
 }
 

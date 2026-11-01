@@ -1,66 +1,46 @@
 /* ======================= 渲染：外壳 ======================= */
+/* 五项一级导航（027 §1.1）：「我的」贴底；不再有分组标题与「更多」。 */
 const NAV = [
-  { id: 'overview', label: '总览', icon: 'grid' },
-  { id: 'issues', label: '健康问题', icon: 'check' },
-  { id: 'labs', label: '检验指标', icon: 'pulse' },
-  { id: 'timeline', label: '检查时间线', icon: 'clock', group: '病历' },
-  { id: 'visits', label: '就诊记录', icon: 'file', group: '病历' },
-  { id: 'meds', label: '用药记录', icon: 'pill', group: '病历' },
-  { id: 'todo', label: '随访与待办', icon: 'todo' },
-  { id: 'weight', label: '减重', icon: 'trend' },
-  { id: 'sleep', label: '睡眠', icon: 'clock' },
-  { id: 'vitals', label: '生命体征', icon: 'heart' },
-  { id: 'symptoms', label: '症状日记', icon: 'symptom' }
+  { id: 'home', label: '首页', icon: 'home' },
+  { id: 'records', label: '就医记录', icon: 'file' },
+  { id: 'daily', label: '日常健康', icon: 'heart' },
+  { id: 'themes', label: '健康主题', icon: 'check' },
+  { id: 'me', label: '我的', icon: 'user', bottom: true }
+];
+/* 底部导航：标签 ≤2 字，顺序与侧栏一致 */
+const TABS = [
+  ['home', '首页', 'home'],
+  ['records', '就医', 'file'],
+  ['daily', '日常', 'heart'],
+  ['themes', '主题', 'check'],
+  ['me', '我的', 'user']
 ];
 
 function navItemHTML(n) {
-  return `
-    <button class="nav-item${n.group ? ' nav-child' : ''}" data-act="go" data-to="${n.id}">
-      ${I[n.icon]}<span>${n.label}</span>
-      ${n.id === 'todo' ? `<em class="count" data-count="todo" style="font-style:normal">${openTodos().length}</em>` : ''}
-      ${n.id === 'todo' || n.id === 'meds' ? `<em class="rdot" data-rdot="${n.id}" style="font-style:normal" hidden></em>` : ''}
-    </button>`;
+  return `<button class="nav-item" type="button" data-act="go" data-to="${n.id}">${I[n.icon] || I.grid}<span>${esc(n.label)}</span></button>`;
 }
 
 function buildNav() {
-  /* 把同 group 的项（病历：时间线/就诊/用药）收进一个分组标题下，子项缩进显示；
-     路由与 data-to 全部保留，hash 与 ROUTES 可达性不变。分组标题不可点击，仅视觉收纳。
-     采用「平级缩进 + 分组标题」方案：连续同 group 的项聚合为一个 .nav-group 块，
-     无 group 的项照常输出，顺序与原 NAV 一致。 */
-  const out = [];
-  const emitted = {}; // group 名 → 已输出该分组块
-  for (const n of NAV) {
-    if (n.group) {
-      if (!emitted[n.group]) {
-        emitted[n.group] = true;
-        const children = NAV.filter(x => x.group === n.group).map(navItemHTML).join('');
-        out.push(`<div class="nav-group"><div class="nav-group-head">${esc(n.group)}</div>${children}</div>`);
-      }
-      continue; // 子项已并入分组块
-    }
-    out.push(navItemHTML(n));
-  }
-  $('#nav').innerHTML = out.join('');
-  $('#tabbar').innerHTML = NAV.filter(n => ['overview', 'issues', 'labs', 'todo'].includes(n.id))
-    .map(n => `<button class="tab" data-act="go" data-to="${n.id}">${I[n.icon]}<span>${n.label.replace('检查时间线', '时间线')}</span></button>`)
-    .join('') + `<button class="tab" data-act="more">${I.more}<span>更多</span></button>`;
+  const main = NAV.filter(n => !n.bottom).map(navItemHTML).join('');
+  const bottom = NAV.filter(n => n.bottom).map(navItemHTML).join('');
+  $('#nav').innerHTML = `${main}<div class="nav-spacer"></div><div class="nav-divider"></div>${bottom}`;
+  $('#tabbar').innerHTML = TABS.map(([to, label, icon]) =>
+    `<button class="tab" type="button" data-act="go" data-to="${to}">${I[icon] || I.grid}<span>${label}</span></button>`).join('');
 }
 
+/* 页面 → 一级项高亮（027 §1.2）：辅助页归属其发起模块 */
+const NAV_OF_PAGE = {
+  home: 'home', todos: 'home',
+  records: 'records', visit: 'records', 'new-visit': 'records', 'new-report': 'records', summary: 'records',
+  daily: 'daily',
+  themes: 'themes', theme: 'themes', labs: 'themes', 'labs-all': 'themes',
+  me: 'me'
+};
+
 function syncChrome(page) {
-  /* 全部记录页从属于「检验指标」，侧栏仍高亮它，不让用户觉得跳出了模块 */
-  const navKey = page === 'labs-all' ? 'labs' : (page === 'summary' ? 'visits' : (page === 'diet' ? 'weight' : page));
+  const navKey = NAV_OF_PAGE[page] || 'home';
   $$('#nav .nav-item').forEach(b => b.classList.toggle('active', b.dataset.to === navKey));
   $$('#tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.to === navKey));
-  const c = $('[data-count="todo"]');
-  if (c) c.textContent = openTodos().length;
-  // 到期提醒红点：复诊待办 / 用药记录上有到期或临近项时显示数量（当天已忽略的不计）
-  const rb = reminderCountByPage();
-  $$('[data-rdot]').forEach(e => {
-    const n = rb[e.dataset.rdot] || 0;
-    e.hidden = n <= 0;
-    e.textContent = n > 0 ? String(n) : '';
-    e.title = n > 0 ? `${n} 项到期提醒` : '';
-  });
 }
 
 function setHead(eyebrow, title, sub, actions, withSearch = true) {
@@ -84,127 +64,11 @@ function emptyGuide({ icon = 'info', title = '', desc = '', steps = [], actions 
   </div>`;
 }
 
-/* ======================= 渲染：总览 ======================= */
-const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
-function dateEyebrow() {
-  const d = new Date();
-  return `${d.getFullYear()} · ${pad(d.getMonth() + 1)} · ${pad(d.getDate())}　星期${WEEK[d.getDay()]}`;
-}
 
+/* 主题状态 chip（data.js 的 statuses → 视觉档位） */
 function statusChip(key, small = false) {
   const s = (ARCHIVE.statuses && (ARCHIVE.statuses[key] || ARCHIVE.statuses.pending)) || { label: '待补充', tone: 'amber' };
   return `<span class="chip ${s.tone}${small ? ' chip-sm' : ''}">${s.label}</span>`;
-}
-
-function renderOverview() {
-  setHead(dateEyebrow(), '档案总览',
-    `${(ARCHIVE.issues || []).length} 个健康主题　·　最近更新 ${ARCHIVE.updated || '未记录'}`,
-    `<label class="search">${I.search}<input id="searchInput" placeholder="搜索问题、药品、指标" aria-label="搜索"> <kbd>/</kbd></label>
-     <button class="btn btn-primary" data-act="record">${I.plus}记录一次</button>`, false);
-
-  const w = latestWeight();
-  const bmi = bmiNow();
-  const waist = waistNow();
-  const bl = baselineInfo();
-  const pct = progressPct();
-  const target = wtTarget();
-  const startKg = wtStart();
-  const gap = (w && target !== null) ? (w.kg - target).toFixed(1) : null;
-  const comp = completeness();
-  const tasks = openTodos().slice(0, 3);
-  const events = (ARCHIVE.timeline || []).slice(0, 3);
-  const themes = ['weight', 'ankle', 'eyes', 'septum', 'liver', 'hair']
-    .map(id => (ARCHIVE.issues || []).find(i => i.id === id)).filter(Boolean);
-
-  /* 没有称重记录时不能编一个数字：基线卡直接说「还没有」，其余显示 — */
-  const heroNote = !w
-    ? '还没有称重记录。记下第一次体重后，这里会算距目标的距离与进度'
-    : gap === null
-      ? '档案里还没设长期目标，进度暂不计算'
-      : bl.ok
-        ? `晨重基线 ${kg1(bl.kg)} kg（最近 7 个晨重日均值）　·　距目标 ${gap} kg`
-        : `距目标 ${gap} kg　·　${bl.days ? `已有 ${bl.days} 天晨重，还需 ${bl.need} 天建立基线` : '尚未开始晨重记录，基线待建立'}`;
-  const heroSub = !w
-    ? '还没有称重记录'
-    : `${esc(w.date)} ${w.tag === 'morning' ? '晨重' : '自报体重'}${bl.ok ? '' : '，尚未建立晨重基线'}`;
-
-  $('#view').innerHTML = `
-  <div class="stack">
-    ${criticalAllergies().length ? `<section class="allergy-alert">${I.info}<div>
-      <b>危急过敏 · 急救提示</b>
-      <p>${criticalAllergies().map(a => `${esc(a.name)}（${esc(a.category || '未分类')}${a.reaction ? '：' + esc(a.reaction) : ''}）`).join('；')}。就诊、用药前务必告知医生。</p>
-      <button class="band-link" data-act="go" data-to="profile">查看过敏档案 →</button>
-    </div></section>` : ''}
-    ${reminderBandHTML()}
-    <section class="hero">
-      <div class="hero-left">
-        <p class="hero-label">身体基线　BASELINE</p>
-        <div class="hero-num"><b>${w ? kg1(w.kg) : '—'}</b><span>kg</span></div>
-        <p class="hero-sub">${heroSub}</p>
-      </div>
-      <div class="hero-div"></div>
-      <div class="hero-stats">
-        <div class="stat"><small>BMI</small><b>${bmi === null ? '—' : bmi.toFixed(1)}</b><i class="${bmi !== null && bmi >= 24 ? 'warn' : ''}">${bmi === null ? '待记录体重' : bmi >= 24 ? '偏高' : '正常范围'}</i></div>
-        <div class="stat"><small>身高</small><b>${ARCHIVE.profile.height || '—'}</b><i>cm</i></div>
-        <div class="stat"><small>长期目标</small><b>${target === null ? '—' : target.toFixed(1)}</b><i>${target === null ? '未设' : 'kg'}</i></div>
-        <div class="stat"><small>腰围</small><b style="font-size:${waist ? '22px' : '19px'}">${waist ? num(waist) : '待测'}</b><i>${waist ? 'cm' : '建议本周补录'}</i></div>
-      </div>
-      <div class="hero-progress">
-        <div class="hp-row"><span>减重进度</span><b>${pct === null ? '—' : Math.round(pct) + ' %'}</b></div>
-        <div class="track"><i style="width:${pct === null ? 0 : Math.max(pct, 2)}%"></i></div>
-        <div class="hp-scale"><span>${startKg === null ? '起点未设' : startKg.toFixed(1) + ' kg 起点'}</span><span>${target === null ? '目标未设' : target.toFixed(1) + ' kg'}</span></div>
-        <p class="hp-note">${heroNote}</p>
-      </div>
-    </section>
-
-    <div class="grid-2">
-      <section class="card">
-        <div class="card-head"><h2>需要处理</h2><span class="chip warn chip-sm">${openTodos().length} 项待核对</span></div>
-        ${tasks.length ? tasks.map(t => `
-          <div class="task">
-            <button class="check" data-act="todo" data-id="${t.id}" aria-label="标记完成"></button>
-            <div class="task-body">
-              <p class="task-text">${esc(t.text)}</p>
-              <p class="task-meta ${t.flag ? 'flag' : ''}">${esc(t.meta)}</p>
-            </div>
-          </div>`).join('') : `<div class="empty">${allTodos().length ? '所有待办已勾选。新增问题或复查后记得补充记录。' : '还没有待办。新增健康问题、登记复查后，这里会自动列出要跟进的事。'}</div>`}
-        <div style="margin-top:14px"><button class="btn-plain" data-act="go" data-to="todo">查看全部 ${allTodos().length} 项 →</button></div>
-      </section>
-
-      <section class="card">
-        <div class="card-head"><h2>最近记录</h2><button class="link" data-act="go" data-to="timeline">查看时间线</button></div>
-        ${events.length ? events.map(e => `
-          <div class="event">
-            <div class="event-date">${esc(e.date.slice(5))}<span>${esc(e.date.slice(0, 4))}</span></div>
-            <div><p class="event-title">${esc(e.type)}</p><p class="event-meta">${esc(e.text)}</p></div>
-          </div>`).join('') : '<div class="empty">还没有事件记录。新增检查、就诊或检验后，这里会按日期列出。</div>'}
-      </section>
-    </div>
-
-    <div class="section-head">
-      <div><h2>健康主题</h2><p>${(ARCHIVE.issues || []).length} 个主题，其中 ${(ARCHIVE.issues || []).filter(i => ['pending', 'stub'].includes(i.status)).length} 个仍待补充信息</p></div>
-      <button class="btn-plain" data-act="go" data-to="issues">全部主题</button>
-    </div>
-    <div class="grid-cards">
-      ${themes.length ? themes.map(t => `
-        <button class="theme-card" data-act="issue" data-id="${t.id}">
-          <div class="tc-head"><span class="tc-name">${esc(t.name)}</span>${statusChip(t.status, true)}</div>
-          <p>${esc(t.card)}</p>
-          <small>${esc(t.lastDate)}　${esc(t.lastLabel)}</small>
-        </button>`).join('') : '<div class="empty" style="padding:22px 12px;text-align:center">还没有健康主题。点右上「记录一次」或到「健康问题」新增，先建起要跟踪的问题。</div>'}
-    </div>
-
-    <section class="band">
-      <div class="band-score"><small>档案完整度</small><b>${comp.pct}<em>%</em></b></div>
-      <div class="band-bar"><i style="width:${comp.pct}%"></i></div>
-      <div class="band-div"></div>
-      <div class="band-missing">
-        <small>仍缺信息（基础资料 ${comp.okP}/${comp.totalP}　主题 ${comp.okI}/${comp.totalI}）</small>
-        <div class="chips">${comp.missing.map(m => `<span class="chip">${esc(m)}</span>`).join('')}</div>
-      </div>
-      <button class="band-link" data-act="go" data-to="issues">补齐档案 →</button>
-    </section>
-  </div>`;
 }
 
 /* ======================= 渲染：健康问题 ======================= */
@@ -224,9 +88,10 @@ function renderIssues() {
   if (!list.some(i => i.id === ui.issue)) ui.issue = list[0] ? list[0].id : '';
   const cur = ARCHIVE.issues.find(i => i.id === ui.issue) || list[0];
 
-  setHead('HEALTH ISSUES　健康问题', '健康问题',
+  setHead('', '健康主题',
     `${ARCHIVE.issues.length} 个主题　·　医院报告、本人描述与辅助分析分开标注`,
-    `<button class="btn btn-primary" data-act="newissue">${I.plus}新增问题</button>`);
+    `<a class="btn btn-ghost" href="#/labs">检验指标 →</a>
+     <button class="btn btn-primary" data-act="newissue">${I.plus}新增主题</button>`, false);
 
   $('#view').innerHTML = `
     <div class="filter-row">
@@ -725,95 +590,6 @@ function paintChart(host, pts, o = {}) {
   });
 }
 
-/* ======================= 渲染：时间线 ======================= */
-/* 事件归一化（task 023 P1-a）：时间线是 visit / medication / 静态 timeline 三类事件的
-   只读聚合视图，统一成 {id, date, type, text, href, src, kind} 一个结构后再排序渲染。
-   - visit：主键 visit.id，事件日期 v.date，回链就诊页；关联只读权威外键 visit.reportId。
-   - medication：主键 medication.id，事件日期 startDate，回链用药页；关联只读权威外键 medication.visitId。
-   - 静态 timeline：非表事件（照片归档/舌苔等），无 id，用 date+src 生成稳定 key。
-   注意：visit 与 medication 是不同领域实体（点事件 vs 线段），此处只做渲染归一，不合并存储。 */
-function timeEvent({ id, date, type, href, src, text, kind, reportId, visitId }) {
-  return {
-    id: String(id || ''),
-    date: String(date || ''),
-    type: type || '',
-    href: href || '',
-    src: src || '',
-    text: text || '',
-    kind: kind || '',
-    reportId: reportId || '',
-    visitId: visitId || ''
-  };
-}
-function timelineVisits() {
-  return visits.map(v => timeEvent({
-    id: v.id, date: v.date, type: v.visitType || '就诊', href: '#/visits', src: '就诊记录',
-    kind: 'visit', reportId: v.reportId,
-    text: [[v.department, v.hospital, v.doctor].filter(Boolean).join('　'),
-      v.diagnosis ? `诊断：${v.diagnosis}` : '', v.summary].filter(Boolean).join('　·　')
-  }));
-}
-function timelineMeds() {
-  return medications.map(md => {
-    const stLabel = medStatusLabel(md.status) || (md.status === 'stopped' ? '已停用' : md.status === 'active' ? '在用' : '状态未知');
-    const meta = [md.dose, md.frequency, md.route].filter(Boolean).join('　');
-    const linkedVisit = md.visitId ? visitById(md.visitId) : null; // 只读权威外键 medication.visitId
-    return timeEvent({
-      id: md.id, date: md.startDate, type: '用药', href: '#/meds', src: '用药记录',
-      kind: 'medication', visitId: md.visitId,
-      text: [`${md.name || '药物'}（${stLabel}）`, meta,
-        linkedVisit ? `关联就诊 ${linkedVisit.date}` : ''].filter(Boolean).join('　·　')
-    });
-  });
-}
-function timelineStatics() {
-  return (ARCHIVE.timeline || []).map(t => timeEvent({
-    id: `${t.date}::${t.src || ''}`,  // 静态事件无 id：用 date+src 生成稳定 key
-    date: t.date, type: t.type, href: t.href, src: t.src, text: t.text, kind: 'static'
-  }));
-}
-function renderTimeline() {
-  setHead('TIMELINE　检查与就诊', '检查时间线',
-    '按事件日期排列；日期不确定的写范围，不强行统一',
-    `<button class="btn btn-ghost" data-act="export">${I.download}导出备份</button>`);
-
-  /* 三类事件归一为同一结构后统一按年分组、按日期倒序 */
-  const events = []
-    .concat(timelineStatics())
-    .concat(timelineVisits())
-    .concat(timelineMeds())
-    .filter(e => e.date && e.date.slice(0, 4));
-
-  const byYear = new Map();
-  events.forEach(t => {
-    const y = t.date.slice(0, 4);
-    if (!byYear.has(y)) byYear.set(y, []);
-    byYear.get(y).push(t);
-  });
-  byYear.forEach(items => items.sort((a, b) => String(b.date).localeCompare(String(a.date))));
-  const years = Array.from(byYear.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-
-  $('#view').innerHTML = `
-    <div class="stack">
-      ${years.map(([y, items]) => `
-        <section class="tl-group">
-          <h2>${y} 年　<span style="font:400 11px/1 var(--sans);color:var(--muted-3)">${items.length} 条</span></h2>
-          ${items.map(t => `
-            <div class="tl-item" data-kind="${esc(t.kind)}" data-id="${esc(t.id)}">
-              <time>${esc(t.date)}</time>
-              <span class="type">${esc(t.type)}</span>
-              <p>${esc(t.text)}</p>
-              <a href="${esc(t.href)}">${esc(t.src)} →</a>
-            </div>`).join('')}
-        </section>`).join('')}
-      ${!years.length ? emptyGuide({
-        icon: 'clock', title: '时间线还是空的',
-        desc: '检验结果、就诊记录会按事件日期自动汇到这里。也可以先登记一次就诊或检查；日期不确定就写范围，不强行统一。',
-        actions: `<button class="btn btn-primary" data-act="visit-add">${I.plus}登记就诊</button><button class="btn btn-ghost" data-act="go" data-to="labs">录入检验结果</button>`
-      }) : ''}
-      <p class="hint">新增记录时按实际事件日期插入；建议和计划写入待办，完成后再转为就诊或检查事实。影像摘要引用既有整理，本次未重新阅片。</p>
-    </div>`;
-}
 
 /* ======================= 渲染：用药 ======================= */
 function renderMeds() {
@@ -891,23 +667,13 @@ function followTypeChip(k) {
 }
 function renderTodos() {
   const total = allTodos().length, open = openTodos().length;
-  const pct = Math.round((total - open) / total * 100);
-  setHead('FOLLOW-UP　随访与待办', '随访与待办',
-    '就诊、定期检查、复查化验、其他随访事项，未勾选均为未确认完成，不代表已预约',
-    `<button class="btn btn-primary" data-act="todo-add">${I.plus}添加待办</button>`);
+  setHead('', '待办与提醒',
+    '有日期按到期排，没日期不算逾期；未勾选不代表已预约',
+    `<button class="btn btn-primary" data-act="todo-add">${I.plus}添加提醒</button>`, false);
 
   $('#view').innerHTML = `
     <div class="stack">
-      <section class="band">
-        <div class="band-score"><small>已完成</small><b>${pct}<em>%</em></b></div>
-        <div class="band-bar"><i style="width:${pct}%"></i></div>
-        <div class="band-div"></div>
-        <div class="band-missing"><small>共 ${total} 项，未完成 ${open} 项</small>
-          <div class="chips"><span class="chip">勾选只保存在本机浏览器</span><span class="chip">到期会在首页提醒</span></div>
-        </div>
-        <button class="band-link" data-act="reset-todos">全部取消勾选</button>
-      </section>
-
+      <p class="hint">共 ${total} 项，未完成 ${open} 项　·　勾选只保存在本机，不会写入就医记录</p>
       <div class="todo-grid">
       ${ARCHIVE.todos.map(g => `
         <section class="card">
