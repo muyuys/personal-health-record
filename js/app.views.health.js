@@ -3,9 +3,9 @@ const NAV = [
   { id: 'overview', label: '总览', icon: 'grid' },
   { id: 'issues', label: '健康问题', icon: 'check' },
   { id: 'labs', label: '检验指标', icon: 'pulse' },
-  { id: 'timeline', label: '检查时间线', icon: 'clock' },
-  { id: 'visits', label: '就诊记录', icon: 'file' },
-  { id: 'meds', label: '用药记录', icon: 'pill' },
+  { id: 'timeline', label: '检查时间线', icon: 'clock', group: '病历' },
+  { id: 'visits', label: '就诊记录', icon: 'file', group: '病历' },
+  { id: 'meds', label: '用药记录', icon: 'pill', group: '病历' },
   { id: 'todo', label: '复诊待办', icon: 'todo' },
   { id: 'weight', label: '减重记录', icon: 'trend' },
   { id: 'diet', label: '减重执行', icon: 'symptom' },
@@ -14,13 +14,34 @@ const NAV = [
   { id: 'symptoms', label: '症状日记', icon: 'symptom' }
 ];
 
-function buildNav() {
-  $('#nav').innerHTML = NAV.map(n => `
-    <button class="nav-item" data-act="go" data-to="${n.id}">
+function navItemHTML(n) {
+  return `
+    <button class="nav-item${n.group ? ' nav-child' : ''}" data-act="go" data-to="${n.id}">
       ${I[n.icon]}<span>${n.label}</span>
       ${n.id === 'todo' ? `<em class="count" data-count="todo" style="font-style:normal">${openTodos().length}</em>` : ''}
       ${n.id === 'todo' || n.id === 'meds' ? `<em class="rdot" data-rdot="${n.id}" style="font-style:normal" hidden></em>` : ''}
-    </button>`).join('');
+    </button>`;
+}
+
+function buildNav() {
+  /* 把同 group 的项（病历：时间线/就诊/用药）收进一个分组标题下，子项缩进显示；
+     路由与 data-to 全部保留，hash 与 ROUTES 可达性不变。分组标题不可点击，仅视觉收纳。
+     采用「平级缩进 + 分组标题」方案：连续同 group 的项聚合为一个 .nav-group 块，
+     无 group 的项照常输出，顺序与原 NAV 一致。 */
+  const out = [];
+  const emitted = {}; // group 名 → 已输出该分组块
+  for (const n of NAV) {
+    if (n.group) {
+      if (!emitted[n.group]) {
+        emitted[n.group] = true;
+        const children = NAV.filter(x => x.group === n.group).map(navItemHTML).join('');
+        out.push(`<div class="nav-group"><div class="nav-group-head">${esc(n.group)}</div>${children}</div>`);
+      }
+      continue; // 子项已并入分组块
+    }
+    out.push(navItemHTML(n));
+  }
+  $('#nav').innerHTML = out.join('');
   $('#tabbar').innerHTML = NAV.filter(n => ['overview', 'issues', 'labs', 'todo'].includes(n.id))
     .map(n => `<button class="tab" data-act="go" data-to="${n.id}">${I[n.icon]}<span>${n.label.replace('检查时间线', '时间线')}</span></button>`)
     .join('') + `<button class="tab" data-act="more">${I.more}<span>更多</span></button>`;

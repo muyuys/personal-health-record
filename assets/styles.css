@@ -91,6 +91,17 @@ svg{display:block}
 }
 .rail-space{flex:1}
 
+/* 侧栏「病历」分组：分组标题 + 缩进子项（时间线/就诊/用药），降噪收纳 */
+.nav-group{display:flex;flex-direction:column;gap:2px;margin:2px 0}
+.nav-group-head{
+  font:600 9.5px/1 var(--sans);letter-spacing:1.4px;color:var(--muted-3);
+  padding:8px 10px 4px;text-transform:none;
+  display:flex;align-items:center;gap:6px;
+}
+.nav-group-head::after{content:'';flex:1;height:1px;background:var(--line-2)}
+.nav-item.nav-child{padding-left:24px;height:36px}
+.nav-item.nav-child svg{width:15px;height:15px;flex:0 0 15px}
+
 /* 存储提示 */
 .storage{
   border:1px solid #E8E2D6;background:#F3EFE6;border-radius:10px;
