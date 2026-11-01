@@ -787,7 +787,7 @@ function deleteMedication(id) {
   toast('已删除');
 }
 
-/* ---------- 复诊待办：页内新增 / 编辑 / 删除（写库） ---------- */
+/* ---------- 随访与待办：页内新增 / 编辑 / 删除（写库） ---------- */
 function todoGroupNames(cur) {
   const set = new Set(['我新增的待办']);
   ARCHIVE.todos.forEach(g => set.add(g.group));
@@ -797,13 +797,15 @@ function todoGroupNames(cur) {
 }
 function openTodoForm(rec) {
   const isEdit = !!rec;
-  const r = rec || { text: '', groupName: '我新增的待办', meta: '', flag: false, dueDate: '' };
+  const r = rec || { text: '', groupName: '我新增的待办', meta: '', flag: false, dueDate: '', followType: 'visit' };
+  const curType = FOLLOW_TYPES.some(t => t.k === r.followType) ? r.followType : 'visit';
   openModal(`
     <div class="modal-head"><div><h2>${isEdit ? '编辑待办' : '添加待办'}</h2><p>保存到本机数据库；勾选状态与静态待办共用一张表</p></div>
     <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button></div>
     <form id="todoForm">
       <div class="form-grid">
         <div class="field wide"><label>待办内容 <b>*</b></label><input name="text" value="${esc(r.text)}" maxlength="200" required placeholder="如 眼科复查：确认流泪刺痛是否改善"></div>
+        <div class="field"><label>随访类型</label><select name="followType">${FOLLOW_TYPES.map(t => `<option value="${t.k}" ${curType === t.k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select></div>
         <div class="field"><label>分组</label><input name="groupName" list="todoGroups" value="${esc(r.groupName || '我新增的待办')}" maxlength="40"><datalist id="todoGroups">${todoGroupNames(r.groupName || '我新增的待办').map(g => `<option value="${esc(g)}"></option>`).join('')}</datalist></div>
         <div class="field"><label>备注</label><input name="meta" value="${esc(r.meta)}" maxlength="120" placeholder="如 科室、时间、要带的材料"></div>
         <div class="field"><label>到期日 <span style="color:var(--muted-3);font-weight:400">（可留空，用于首页提醒）</span></label><input type="date" name="dueDate" value="${esc(r.dueDate || '')}"></div>
@@ -820,6 +822,7 @@ function openTodoForm(rec) {
     const fd = new FormData(e.target);
     const text = String(fd.get('text') || '').trim();
     if (!text) { toast('请填写待办内容'); return; }
+    const rawType = String(fd.get('followType') || '');
     const obj = {
       id: rec ? rec.id : newId('todo'),
       text,
@@ -827,6 +830,7 @@ function openTodoForm(rec) {
       meta: String(fd.get('meta') || '').trim(),
       flag: fd.get('flag') === 'on',
       dueDate: normISODate(fd.get('dueDate')),
+      followType: FOLLOW_TYPES.some(t => t.k === rawType) ? rawType : 'visit',
       createdAt: rec ? rec.createdAt : Date.now()
     };
     todoItems = rec ? todoItems.map(x => x.id === rec.id ? obj : x) : [obj, ...todoItems];
@@ -938,7 +942,7 @@ const ROUTES = {
   visits: { render: renderVisits, label: '就诊记录' },
   summary: { render: renderSummary, label: '就诊摘要导出' },
   meds: { render: renderMeds, label: '用药记录' },
-  todo: { render: renderTodos, label: '复诊待办' },
+  todo: { render: renderTodos, label: '随访与待办' },
   weight: { render: renderWeight, label: '减重' },
   diet: { render: renderDiet, label: '减重' },
   sleep: { render: renderSleep, label: '睡眠' },
