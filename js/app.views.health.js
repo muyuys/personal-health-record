@@ -6,7 +6,7 @@ const NAV = [
   { id: 'timeline', label: '检查时间线', icon: 'clock', group: '病历' },
   { id: 'visits', label: '就诊记录', icon: 'file', group: '病历' },
   { id: 'meds', label: '用药记录', icon: 'pill', group: '病历' },
-  { id: 'todo', label: '复诊待办', icon: 'todo' },
+  { id: 'todo', label: '随访与待办', icon: 'todo' },
   { id: 'weight', label: '减重', icon: 'trend' },
   { id: 'sleep', label: '睡眠', icon: 'clock' },
   { id: 'vitals', label: '生命体征', icon: 'heart' },
@@ -214,7 +214,7 @@ function renderIssues() {
   const filters = [
     ['', '全部', counts.all],
     ['active', '记录中', counts.active || 0],
-    ['followup', '待复诊', counts.followup || 0],
+    ['followup', (ARCHIVE.statuses.followup || {}).label || '待随访', counts.followup || 0],
     ['monitor', '监测中', counts.monitor || 0],
     ['history', '历史记录', counts.history || 0],
     ['pending', '待补充', counts.pending || 0],
@@ -884,11 +884,16 @@ function renderMeds() {
 }
 
 /* ======================= 渲染：待办 ======================= */
+/* 随访类型 chip：复诊(默认色) / 定期检查(green) / 复查化验(amber) / 其他(mute) */
+function followTypeChip(k) {
+  const tone = k === 'exam' ? 'green' : k === 'lab' ? 'amber' : k === 'other' ? 'mute' : '';
+  return `<span class="chip chip-sm ${tone}">${esc(followTypeLabel(k))}</span>`;
+}
 function renderTodos() {
   const total = allTodos().length, open = openTodos().length;
   const pct = Math.round((total - open) / total * 100);
-  setHead('FOLLOW-UP　复诊与待办', '复诊待办',
-    '未勾选均为未确认完成，不代表已预约',
+  setHead('FOLLOW-UP　随访与待办', '随访与待办',
+    '就诊、定期检查、复查化验、其他随访事项，未勾选均为未确认完成，不代表已预约',
     `<button class="btn btn-primary" data-act="todo-add">${I.plus}添加待办</button>`);
 
   $('#view').innerHTML = `
@@ -911,7 +916,7 @@ function renderTodos() {
             <div class="task ${state.done[t.id] ? 'done' : ''}">
               <button class="check ${state.done[t.id] ? 'on' : ''}" data-act="todo" data-id="${t.id}" aria-label="${state.done[t.id] ? '取消完成' : '标记完成'}">${I.check2}</button>
               <div class="task-body">
-                <p class="task-text">${esc(t.text)}</p>
+                <p class="task-text">${esc(t.text)} ${followTypeChip(t.followType)}</p>
                 <p class="task-meta ${t.flag ? 'flag' : ''}">${esc(t.meta)}</p>
               </div>
             </div>`).join('')}
@@ -930,7 +935,7 @@ function renderTodos() {
           <div class="task ${state.done[t.id] ? 'done' : ''}">
             <button class="check ${state.done[t.id] ? 'on' : ''}" data-act="todo" data-id="${esc(t.id)}" aria-label="${state.done[t.id] ? '取消完成' : '标记完成'}">${I.check2}</button>
             <div class="task-body">
-              <p class="task-text">${esc(t.text)}</p>
+              <p class="task-text">${esc(t.text)} ${followTypeChip(t.followType)}</p>
               <p class="task-meta ${t.flag ? 'flag' : ''}">${esc(t.groupName || '我新增的待办')}${t.meta ? '　·　' + esc(t.meta) : ''}${t.dueDate ? '　·　到期 ' + esc(t.dueDate) : ''}${!state.done[t.id] && t.dueDate && daysFromToday(t.dueDate) < 0 ? '　·　已逾期' : ''}</p>
             </div>
             <div style="display:flex;gap:4px;align-items:center;flex:0 0 auto">
@@ -939,7 +944,7 @@ function renderTodos() {
             </div>
           </div>`).join('') : emptyGuide({
             icon: 'todo', title: '还没有自己新增的待办',
-            desc: '把要跟进的事（预约、复查、取药等）记下来；到期会在首页提醒。勾选只保存于本机浏览器。',
+            desc: '把要跟进的事（预约、检查、化验、取药等）记下来；到期会在首页提醒。勾选只保存于本机浏览器。',
             actions: `<button class="btn btn-primary" data-act="todo-add">${I.plus}添加待办</button>`
           })}
       </section>
