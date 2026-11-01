@@ -247,7 +247,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS todo_item (
           id TEXT PRIMARY KEY, text TEXT NOT NULL, group_name TEXT DEFAULT '',
           meta TEXT DEFAULT '', flag INTEGER DEFAULT 0, created_at INTEGER,
-          due_date TEXT DEFAULT ''
+          due_date TEXT DEFAULT '', follow_type TEXT DEFAULT ''
         );
         """)
         # 增量迁移（幂等）：老库补上定性结果与异常标志两列，绝不 DROP / 清空数据。
@@ -267,6 +267,10 @@ def init_db():
         tcols = {row[1] for row in c.execute("PRAGMA table_info(todo_item)")}
         if "due_date" not in tcols:
             c.execute("ALTER TABLE todo_item ADD COLUMN due_date TEXT DEFAULT ''")
+        # 增量迁移（幂等）：老库 todo_item 补上随访类型（任务 025，区分复诊/定期检查/复查化验/其他）。
+        # 只 ADD COLUMN，绝不 DROP / 清空；新库已在 CREATE TABLE 里带上该列。空值视为复诊(visit)。
+        if "follow_type" not in tcols:
+            c.execute("ALTER TABLE todo_item ADD COLUMN follow_type TEXT DEFAULT ''")
         # 增量迁移（幂等）：老库的 medication 补上 信息日期 / 来源 / 待核对 三列。
         # 只 ADD COLUMN，绝不 DROP / 清空；新库已在 CREATE TABLE 里带上这些列。
         mcols = {row[1] for row in c.execute("PRAGMA table_info(medication)")}
@@ -481,7 +485,7 @@ def get_all():
                         for r in c.execute("SELECT id,status,note,updated_at FROM issue_status")}
         todo_items = [dict(r) for r in c.execute(
             "SELECT id,text,group_name AS groupName,meta,flag,created_at AS createdAt,"
-            "COALESCE(due_date,'') AS dueDate "
+            "COALESCE(due_date,'') AS dueDate,COALESCE(follow_type,'') AS followType "
             "FROM todo_item ORDER BY created_at, id")]
         row = c.execute("SELECT v FROM meta WHERE k='savedAt'").fetchone()
         saved_at = int(row["v"]) if row else None
@@ -720,12 +724,12 @@ def replace_todo_items(rows):
                         _s(r.get("groupName") or r.get("group")), _s(r.get("meta")),
                         1 if r.get("flag") else 0,
                         int(r.get("createdAt") or 0) or int(time.time() * 1000),
-                        _s(r.get("dueDate"))))
+                        _s(r.get("dueDate")), _s(r.get("followType"))))
     with _db_lock, connect() as c:
         c.execute("DELETE FROM todo_item")
         c.executemany(
-            "INSERT OR REPLACE INTO todo_item (id,text,group_name,meta,flag,created_at,due_date) "
-            "VALUES (?,?,?,?,?,?,?)", cleaned)
+            "INSERT OR REPLACE INTO todo_item (id,text,group_name,meta,flag,created_at,due_date,follow_type) "
+            "VALUES (?,?,?,?,?,?,?,?)", cleaned)
         c.execute("INSERT OR REPLACE INTO meta (k,v) VALUES ('savedAt',?)", (str(int(time.time() * 1000)),))
     return len(cleaned)
 
