@@ -50,7 +50,7 @@ const ARCHIVE = {
 
   statuses: {
     active:   { label: '记录中', tone: 'green' },
-    followup: { label: '待复诊', tone: 'warn' },
+    followup: { label: '待随访', tone: 'warn' },
     monitor:  { label: '监测中', tone: 'green' },
     history:  { label: '历史记录', tone: 'mute' },
     pending:  { label: '待补充', tone: 'amber' },
@@ -245,27 +245,27 @@ const ARCHIVE = {
     {
       group: '近期核对',
       items: [
-        { id: 't-eye', text: '眼科复查：确认 10-22 之后是否复查、流泪刺痛是否改善、目前实际用药', meta: '眼科　·　尚无复查记录', flag: true },
-        { id: 't-ankle', text: '足踝门诊：带复诊沟通单，确认允许的负重与活动', meta: '右踝　·　上次检查 2026-08-19' },
-        { id: 't-med', text: '用药核对：现用滴眼液、其他处方药、补充剂及过敏史', meta: '用药　·　当前用药未核对' }
+        { id: 't-eye', text: '眼科复查：确认 10-22 之后是否复查、流泪刺痛是否改善、目前实际用药', meta: '眼科　·　尚无复查记录', flag: true, followType: 'visit' },
+        { id: 't-ankle', text: '足踝门诊：带复诊沟通单，确认允许的负重与活动', meta: '右踝　·　上次检查 2026-08-19', followType: 'visit' },
+        { id: 't-med', text: '用药核对：现用滴眼液、其他处方药、补充剂及过敏史', meta: '用药　·　当前用药未核对', followType: 'other' }
       ]
     },
     {
       group: '减重起步',
       items: [
-        { id: 't-waist', text: '记录腰围，开始同条件晨重，建立首个 7 天均值', meta: '减重　·　2026-11-03 首次周复盘' },
-        { id: 't-diet', text: '从 2026-10-27 起记录饮食，含饮料、零食、烹调油和酱料；漏记写明', meta: '减重　·　每日记录' },
-        { id: 't-review', text: '2026-11-03 首次周复盘；11-10 至 11-17 复核体重趋势和热量预算', meta: '减重　·　自行复盘，未设置提醒' },
-        { id: 't-stage', text: '结合连续记录与身体反应确认春节前阶段目标', meta: '减重　·　原期望 130 斤，建议阶段目标 164 斤' }
+        { id: 't-waist', text: '记录腰围，开始同条件晨重，建立首个 7 天均值', meta: '减重　·　2026-11-03 首次周复盘', followType: 'other' },
+        { id: 't-diet', text: '从 2026-10-27 起记录饮食，含饮料、零食、烹调油和酱料；漏记写明', meta: '减重　·　每日记录', followType: 'other' },
+        { id: 't-review', text: '2026-11-03 首次周复盘；11-10 至 11-17 复核体重趋势和热量预算', meta: '减重　·　自行复盘，未设置提醒', followType: 'other' },
+        { id: 't-stage', text: '结合连续记录与身体反应确认春节前阶段目标', meta: '减重　·　原期望 130 斤，建议阶段目标 164 斤', followType: 'other' }
       ]
     },
     {
       group: '档案逐步补齐',
       items: [
-        { id: 't-lab', text: '核对最近肝肾功能化验的异常项（肌酐、尿酸）与医生意见', meta: '肝肾功能　·　按最近化验核对' },
-        { id: 't-themes', text: '鼻炎、脱发、牙齿、甲沟炎、脚气、尿频：逐项确认症状、确诊与用药', meta: '6 个主题　·　待补充' },
-        { id: 't-ankle2', text: '核对 2025 年末扭伤日期；补充右踝是否实际接受封闭及药物、部位、效果', meta: '右踝　·　日期有 1 天出入' },
-        { id: 't-base', text: '补充睡眠、吸烟饮酒、手术住院和家族史', meta: '个人资料　·　4 项空白' }
+        { id: 't-lab', text: '核对最近肝肾功能化验的异常项（肌酐、尿酸）与医生意见', meta: '肝肾功能　·　按最近化验核对', followType: 'lab' },
+        { id: 't-themes', text: '鼻炎、脱发、牙齿、甲沟炎、脚气、尿频：逐项确认症状、确诊与用药', meta: '6 个主题　·　待补充', followType: 'other' },
+        { id: 't-ankle2', text: '核对 2025 年末扭伤日期；补充右踝是否实际接受封闭及药物、部位、效果', meta: '右踝　·　日期有 1 天出入', followType: 'other' },
+        { id: 't-base', text: '补充睡眠、吸烟饮酒、手术住院和家族史', meta: '个人资料　·　4 项空白', followType: 'other' }
       ]
     }
   ]

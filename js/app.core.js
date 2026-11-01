@@ -99,6 +99,17 @@ const ALLERGY_CATS = ['药物', '食物', '接触物', '其他'];
 const ALLERGY_SEVS = [['critical', '危急（曾致严重反应）'], ['high', '较重'], ['mild', '较轻']];
 const VISIT_TYPES = ['门诊', '急诊', '住院', '体检', '线上问诊', '其他'];
 const MED_STATUS = [['active', '在服'], ['stopped', '已停'], ['unknown', '待确认']];
+/* 随访类型（任务 025）：区分复诊 / 定期检查 / 复查化验 / 其他；缺省视为 visit（复诊）。 */
+const FOLLOW_TYPES = [
+  { k: 'visit', label: '复诊' },
+  { k: 'exam', label: '定期检查' },
+  { k: 'lab', label: '复查化验' },
+  { k: 'other', label: '其他' }
+];
+function followTypeLabel(k) {
+  const hit = FOLLOW_TYPES.find(t => t.k === k);
+  return hit ? hit.label : '复诊';
+}
 const MED_ROUTES = ['口服', '外用', '滴眼', '滴鼻', '吸入', '注射', '含服', '其他'];
 const HIST_KINDS = {
   allergy: { label: '过敏', list: () => allergies },
@@ -625,6 +636,7 @@ function normTodoItem(x) {
     meta: String(x.meta || '').trim().slice(0, 120),
     flag: !!x.flag,
     dueDate: normISODate(x.dueDate),
+    followType: FOLLOW_TYPES.some(t => t.k === x.followType) ? x.followType : 'visit',
     createdAt: Number(x.createdAt) || Date.now()
   };
 }
