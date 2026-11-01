@@ -300,16 +300,17 @@ function dismissReminder(key) {
 }
 function buildReminders() {
   const out = [];
-  // 1) 到期 / 临近的复诊与待办（静态待办 + 用户新增待办，未完成的）
+  // 1) 到期 / 临近的随访与待办（静态待办 + 用户新增待办，未完成的），按随访类型措辞
   openTodos().forEach(t => {
     const due = todoDue(t);
     if (!due) return;
     const d = daysFromToday(due);
     if (d === null || d > REMIND_SOON_DAYS) return;
+    const typeLabel = followTypeLabel(t.followType);
     out.push({
       key: 'followup:' + t.id, kind: 'followup', page: 'todo',
       title: t.text,
-      sub: due + (d < 0 ? `　·　已逾期 ${-d} 天` : d === 0 ? '　·　今天' : `　·　还有 ${d} 天`),
+      sub: typeLabel + '　·　' + due + (d < 0 ? `　·　已逾期 ${-d} 天` : d === 0 ? '　·　今天' : `　·　还有 ${d} 天`),
       level: d < 0 ? 'over' : 'soon', dueNum: d, action: { act: 'go', to: 'todo' }
     });
   });
