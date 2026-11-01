@@ -7,8 +7,7 @@ const NAV = [
   { id: 'visits', label: '就诊记录', icon: 'file', group: '病历' },
   { id: 'meds', label: '用药记录', icon: 'pill', group: '病历' },
   { id: 'todo', label: '复诊待办', icon: 'todo' },
-  { id: 'weight', label: '减重记录', icon: 'trend' },
-  { id: 'diet', label: '减重执行', icon: 'symptom' },
+  { id: 'weight', label: '减重', icon: 'trend' },
   { id: 'sleep', label: '睡眠', icon: 'clock' },
   { id: 'vitals', label: '生命体征', icon: 'heart' },
   { id: 'symptoms', label: '症状日记', icon: 'symptom' }
@@ -49,7 +48,7 @@ function buildNav() {
 
 function syncChrome(page) {
   /* 全部记录页从属于「检验指标」，侧栏仍高亮它，不让用户觉得跳出了模块 */
-  const navKey = page === 'labs-all' ? 'labs' : (page === 'summary' ? 'visits' : page);
+  const navKey = page === 'labs-all' ? 'labs' : (page === 'summary' ? 'visits' : (page === 'diet' ? 'weight' : page));
   $$('#nav .nav-item').forEach(b => b.classList.toggle('active', b.dataset.to === navKey));
   $$('#tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.to === navKey));
   const c = $('[data-count="todo"]');

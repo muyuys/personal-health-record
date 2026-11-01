@@ -130,7 +130,10 @@ const ui = {
   pager: { weight: 1, sleep: 1, labs: 1 },
   /* 明细「记录明细」折叠面板的展开状态（内存态，刷新回默认折叠）。
      翻页会整页重渲染，这里记下已交互的面板，重渲染后保持展开。 */
-  openDetails: {}
+  openDetails: {},
+  /* 「减重」聚合页当前分段（内存态）：overview / weight / diet / review。
+     既可由页内 chip 切换，也可由旧 #/diet 链接映射到 diet 段。 */
+  slImSeg: 'overview'
 };
 
 /* 默认每页条数可选项 */
