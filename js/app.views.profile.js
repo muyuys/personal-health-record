@@ -168,7 +168,7 @@ function summaryDocHTML(scope) {
 
   const todos = openTodos();
   const todoBlock = todos.length
-    ? `<ul class="sum-todos">${todos.map(t => `<li>${t.flag ? '⚠ ' : ''}${esc(t.text)}${t.dueDate ? `（${esc(t.dueDate)}）` : ''}${t.groupName ? '　·　' + esc(t.groupName) : ''}</li>`).join('')}</ul>`
+    ? `<ul class="sum-todos">${todos.map(t => `<li>${t.flag ? '<span style="color:var(--warn)">重点</span>　' : ''}${esc(t.text)}${t.dueDate ? `（${esc(t.dueDate)}）` : ''}${t.groupName ? '　·　' + esc(t.groupName) : ''}</li>`).join('')}</ul>`
     : `<p class="hint">无待复诊 / 待办记录。</p>`;
 
   return `<section class="card sum-doc" id="summaryDoc">
@@ -218,6 +218,8 @@ function renderProfile() {
   const si = storeInfo();
   const req = profileChecklist();
   const reqOk = req.filter(x => x.ok).length;
+  const pfs = profileFields();
+  const pfPending = pfs.filter(f => !f.ok).length;
   const reqPct = Math.round(reqOk / req.length * 100);
   setHead('PROFILE　个人资料', '个人资料', '空白代表未记录，不等于没有',
     `<button class="btn btn-ghost" data-act="export">${I.download}导出备份</button>`);
@@ -227,13 +229,14 @@ function renderProfile() {
       <div class="grid-2">
         <section class="card">
           <div class="card-head"><h2>基础资料</h2><span class="link">${comp.okP}/${comp.totalP} 项已填</span></div>
+          <p class="hint" style="margin:0 0 8px">共 ${pfs.length} 项，其中 ${pfPending} 项待填。</p>
           <table class="data" style="width:100%">
             <thead><tr><th style="width:40%">项目</th><th>内容</th><th style="width:52px;text-align:right">状态</th></tr></thead>
             <tbody>
-              ${profileFields().map(f => `<tr>
+              ${pfs.map(f => `<tr>
                 <td style="color:var(--muted);font-size:11px">${esc(f.k)}</td>
                 <td style="color:${f.ok ? 'var(--ink-2)' : 'var(--muted-3)'}">${esc(f.v)}</td>
-                <td style="text-align:right"><span class="chip chip-sm ${f.ok ? 'green' : 'amber'}">${f.ok ? '已填' : '待填'}</span></td>
+                <td style="text-align:right;color:${f.ok ? 'var(--muted-2)' : 'var(--muted-3)'}">${f.ok ? '已填' : '待填'}</td>
               </tr>`).join('')}
             </tbody>
           </table>
@@ -256,13 +259,14 @@ function renderProfile() {
       <section class="card">
         <div class="card-head"><h2>个人资料必填清单</h2><span class="chip ${reqPct === 100 ? 'green' : 'amber'} chip-sm">${reqPct}% · ${reqOk}/${req.length}</span></div>
         <div class="track" style="background:#EDE8DC;height:8px"><i style="width:${reqPct}%;background:var(--pine-2)"></i></div>
+        <p class="hint" style="margin:12px 0 0">共 ${req.length} 项，其中 ${req.length - reqOk} 项待填。</p>
         <div class="table-wrap" style="margin-top:14px">
           <table class="data" style="width:100%">
             <thead><tr><th style="width:30%">必填项</th><th style="width:64px">状态</th><th>当前字段 / 内容</th></tr></thead>
             <tbody>
               ${req.map(x => `<tr>
                 <td style="color:var(--ink-2)">${esc(x.label)}</td>
-                <td><span class="chip chip-sm ${x.ok ? 'green' : 'amber'}">${x.ok ? '已填' : '待填'}</span></td>
+                <td style="color:${x.ok ? 'var(--muted-2)' : 'var(--muted-3)'}">${x.ok ? '已填' : '待填'}</td>
                 <td style="color:${x.ok ? 'var(--ink-2)' : 'var(--muted-3)'}">${esc(x.value)}</td>
               </tr>`).join('')}
             </tbody>
