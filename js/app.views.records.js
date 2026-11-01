@@ -184,10 +184,11 @@ function recentStream() {
   }));
   sleepLogsSorted().forEach(s => {
     const hrs = [s.bedtime, s.wake].filter(Boolean).length === 2 ? `${s.bedtime} → ${s.wake}` : '';
+    const h = Number(s.hours); /* 时长口径与 app.views.body.js 睡眠趋势一致：保留一位小数 */
     push({
       id: s.id, kind: 'sleep', date: s.date || '', createdAt: s.createdAt || 0,
       chip: '睡眠', title: '睡眠',
-      summary: [hrs, Number.isFinite(Number(s.hours)) ? `${s.hours} 小时` : '', String(s.note || '').trim()]
+      summary: [hrs, Number.isFinite(h) ? `${h.toFixed(1)} 小时` : '', String(s.note || '').trim()]
         .filter(Boolean).join('　'),
       meta: '日常健康 · 睡眠', href: '#/daily?seg=sleep'
     });
@@ -442,6 +443,17 @@ function recordCounts(q) {
   return base;
 }
 
+/* 结果摘要与档位徽标完全重复：未筛选（无搜索、无日期、档位=全部）时置空；
+   筛选中只报当前档位下的总数，搜索与日期筛选后 counts 即为筛选后的口径 */
+function recSummaryHTML(q, counts) {
+  const tierCount = q.t === 'visit' ? counts.visit
+    : q.t === 'report' ? counts.report
+    : q.t === 'med' ? counts.med
+    : counts.all;
+  const filtered = !!(q.q || q.from || q.to || q.t !== 'all');
+  return filtered ? `已筛选 · 共 ${tierCount} 条` : '';
+}
+
 const REC_PAGE_SIZE = 20;
 
 function recordsEmptyHTML(q, counts) {
@@ -573,7 +585,7 @@ function renderRecords() {
       </div>
     </div>
 
-    <p class="hint" id="recSummary">共 ${counts.all} 条　就诊 ${counts.visit}　报告 ${counts.report}　用药 ${counts.med}${filtered ? '　·　已筛选' : ''}</p>
+    <p class="hint" id="recSummary">${recSummaryHTML(q, counts)}</p>
 
     <div id="recList"></div>
 
@@ -592,7 +604,7 @@ function renderRecords() {
         const q2 = readRecordsQuery();
         const c2 = recordCounts(q2);
         const sum = $('#recSummary');
-        if (sum) sum.innerHTML = `共 ${c2.all} 条　就诊 ${c2.visit}　报告 ${c2.report}　用药 ${c2.med}${(q2.q || q2.from || q2.to) ? '　·　已筛选' : ''}`;
+        if (sum) sum.innerHTML = recSummaryHTML(q2, c2);
         renderRecordsList();
       }, 300);
     });
