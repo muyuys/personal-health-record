@@ -217,3 +217,30 @@ body:has(.ai-layout) .disclaimer{display:none}.feature-panel .btn{width:fit-cont
   .ai-send-left>.ai-compose-tools{order:2;flex:1 1 auto;min-width:0}
   .ai-send>.btn{order:3}
 }
+
+/* 输入 / 弹出的指令与引用面板：贴着输入框上沿，按当前输入过滤 */
+#aiForm{position:relative}
+.ai-slash{position:absolute;left:0;right:0;bottom:calc(100% + 8px);z-index:40;max-height:min(46vh,340px);overflow-y:auto;overscroll-behavior:contain;padding:6px;border:1px solid var(--line);border-radius:10px;background:var(--bg-card);box-shadow:0 8px 28px rgba(25,31,27,.14);scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+.ai-slash[hidden]{display:none}
+.ai-slash-group+.ai-slash-group{margin-top:4px;padding-top:4px;border-top:1px solid var(--line-soft)}
+.ai-slash-label{margin:0;padding:6px 8px 4px;font-size:12px;color:var(--ink-4)}
+.ai-slash-item{display:flex;flex-direction:column;gap:2px;width:100%;min-height:44px;padding:7px 9px;border-radius:8px;text-align:left;line-height:1.5}
+.ai-slash-item:hover{background:var(--bg-hover)}
+.ai-slash-item.is-active{background:var(--bg-selected)}
+.ai-slash-title{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--ink-1)}
+.ai-slash-hint{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--ink-4)}
+.ai-slash-empty{margin:0;padding:14px 10px;font-size:13px;color:var(--ink-4)}
+/* 引用记录：发送前挂在输入框上方，可逐条摘掉 */
+.ai-refs{display:flex;flex-wrap:wrap;gap:6px}
+.ai-refs[hidden]{display:none}
+.ai-ref-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:28px;padding:2px 3px 2px 8px;border:1px solid var(--line);border-radius:999px;background:var(--bg-sunken);font-size:12px;line-height:1.5;color:var(--ink-2)}
+.ai-ref-kind{flex:0 0 auto;color:var(--ink-4)}
+.ai-ref-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ai-ref-remove{display:grid;place-items:center;width:22px;height:22px;flex:0 0 22px;border-radius:50%;color:var(--ink-4)}
+.ai-ref-remove:hover{background:var(--bg-hover);color:var(--ink-1)}
+.ai-ref-remove svg{width:12px;height:12px}
+@media(max-width:760px){
+  .ai-slash{max-height:min(42vh,300px)}
+  .ai-ref-chip{min-height:30px}
+  .ai-ref-remove{width:26px;height:26px;flex-basis:26px}
+}

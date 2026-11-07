@@ -4,6 +4,10 @@ let aiBusy = false;
 let aiSelectedModel = '';
 let aiModelPickerClose = null;
 let aiArchiveClose = null;
+let aiSlashClose = null;
+let aiSlashController = null;
+let aiRefOptions = [];   // 这个档案里可被引用的记录
+let aiRefPicked = [];    // 本次提问点名引用的记录（发送后清空）
 
 function shortModelName(id) {
   return String(id || '选择模型').split('/').pop().replace(/^glm-/i, 'GLM ').replace(/^gpt-/i, 'GPT ').replace(/^deepseek-/i, 'DeepSeek ').replace(/-flash$/i, ' Flash');
@@ -468,7 +472,7 @@ function sourceHTML(source) {
   const kind = AI_SOURCE_KINDS[source.kind] || source.kind || '记录';
   const fields = sourceFields(source);
   const link = source.kind === 'document' ? '' : `<a href="#/${AI_SOURCE_TARGETS[source.kind] || 'daily'}">查看对应记录</a>`;
-  const meta = [source.imageProvided ? '已提供图片' : '', link].filter(Boolean).join('');
+  const meta = [source.pinned ? '本次提问点名引用' : '', source.imageProvided ? '已提供图片' : '', link].filter(Boolean).join('');
   return `<li class="ai-source"><div class="ai-source-head"><span class="ai-source-ref">${esc(source.ref)}</span><span class="ai-source-title">${esc([source.date, source.label].filter(Boolean).join(' · ') || '未标注日期')}</span><span class="ai-source-kind">${esc(kind)}</span></div>${fields ? `<p class="ai-source-fields">${fields}</p>` : ''}${meta ? `<p class="ai-source-meta">${meta}</p>` : ''}<details class="ai-source-raw"><summary>原始字段</summary><pre>${esc(JSON.stringify(source.record, null, 2))}</pre></details></li>`;
 }
 /* 对话样式：提问靠右气泡，回答纯文本排在页面底色上，顶部一行小字、底部一行操作 */
@@ -492,14 +496,48 @@ function aiElapsed(ms) {
   return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
 }
 /* 斜杠指令只认「整条输入就是一个 /xxx」，避免正文里提到 /reset 被当成命令执行 */
-const AI_COMMANDS = { reset: 'reset', clear: 'reset', '清空': 'reset' };
+const AI_COMMAND_LIST = [
+  { name: 'reset', aliases: ['reset', 'clear', '清空'], label: '清空问答记录',
+    hint: '删除这个档案已保存的问答；检验、报告等记录不受影响' },
+];
+const AI_COMMANDS = {};
+for (const command of AI_COMMAND_LIST) for (const alias of command.aliases) AI_COMMANDS[alias] = command.name;
 const AI_SUGGESTIONS = ['这个档案里有哪些数据？', '最近有哪些检验结果需要核对？', '帮我整理下次复诊需要带的资料。'];
 function aiCommand(text) {
   const match = /^\/\s*([A-Za-z\u4e00-\u9fa5]+)\s*$/.exec(String(text || '').trim());
   return match ? AI_COMMANDS[match[1].toLowerCase()] || '' : '';
 }
+/* 输入 / 弹出的面板：指令与被引用的记录共用一个列表，按当前输入过滤 */
+function aiSlashItems(query) {
+  const term = String(query || '').trim().toLowerCase();
+  const hit = (...parts) => !term || parts.some(part => String(part || '').toLowerCase().includes(term));
+  const items = [];
+  for (const command of AI_COMMAND_LIST) {
+    if (!hit('/' + command.name, command.label)) continue;
+    items.push({ type: 'cmd', group: '指令', value: command.name,
+      title: '/' + command.name, hint: command.label + ' · ' + command.hint });
+  }
+  for (const ref of aiRefOptions) {
+    if (!hit(ref.label, ref.meta, ref.date)) continue;
+    items.push({ type: 'ref', group: '引用记录', ref,
+      title: [ref.date, ref.label].filter(Boolean).join(' · ') || '未命名记录',
+      hint: [AI_SOURCE_KINDS[ref.kind] || '记录', ref.meta].filter(Boolean).join(' · ') });
+  }
+  return items;
+}
+function aiSlashHTML(items) {
+  if (!items.length) return '<p class="ai-slash-empty">没有匹配的指令或记录</p>';
+  const groups = [];
+  for (const [index, item] of items.entries()) {
+    let bucket = groups.find(group => group.name === item.group);
+    if (!bucket) groups.push(bucket = { name: item.group, rows: [] });
+    bucket.rows.push({ ...item, index });
+  }
+  return groups.map(bucket => `<div class="ai-slash-group"><p class="ai-slash-label">${esc(bucket.name)}</p>${bucket.rows.map(item =>
+    `<button class="ai-slash-item" type="button" role="option" id="aiSlashOpt${item.index}" data-slash-index="${item.index}" aria-selected="false"><span class="ai-slash-title">${esc(item.title)}</span><span class="ai-slash-hint">${esc(item.hint)}</span></button>`).join('')}</div>`).join('');
+}
 function aiEmptyHTML() {
-  return `<div class="ai-empty"><h2>从一条健康记录开始</h2><p>问题里带上日期、指标或报告名称，回答会更准。</p><div class="ai-suggest">${AI_SUGGESTIONS.map(text => `<button class="ai-suggest-item" type="button" data-ai-suggest="${esc(text)}">${esc(text)}</button>`).join('')}</div><p class="ai-empty-hint">对话变长后输入 <code>/reset</code>，可清空这个档案已保存的问答记录。</p></div>`;
+  return `<div class="ai-empty"><h2>从一条健康记录开始</h2><p>问题里带上日期、指标或报告名称，回答会更准。</p><div class="ai-suggest">${AI_SUGGESTIONS.map(text => `<button class="ai-suggest-item" type="button" data-ai-suggest="${esc(text)}">${esc(text)}</button>`).join('')}</div><p class="ai-empty-hint">输入 <code>/</code> 可以挑选指令，或引用某份报告、就诊记录；对话变长后用 <code>/reset</code> 清空问答记录。</p></div>`;
 }
 function aiNoticeHTML(text) {
   return `<p class="ai-notice" role="status"><span>${esc(text)}</span></p>`;
@@ -526,8 +564,12 @@ async function renderAssistant() {
   setHead('当前档案 · ' + activeMemberName(), 'AI 健康问答', '结合已保存的健康记录整理信息，回答可核对来源。', '<a class="btn" href="#/settings?section=models">连接设置</a>', false);
   $('#view').innerHTML = '<p role="status">正在读取问答…</p>';
   try {
-    const [status, history, initialCatalog] = await Promise.all([featureAPI('/ai/status'), featureAPI('/ai/history'), featureAPI('/ai/models')]);
+    const [status, history, initialCatalog, refList] = await Promise.all([featureAPI('/ai/status'), featureAPI('/ai/history'), featureAPI('/ai/models'),
+      // 引用列表只是锦上添花：拿不到就让面板里只剩指令，别把整页拖崩
+      featureAPI('/ai/refs').catch(() => ({ refs: [] }))]);
     if (currentPage() !== 'assistant') return;
+    aiRefOptions = Array.isArray(refList.refs) ? refList.refs : [];
+    aiRefPicked = aiRefPicked.filter(ref => aiRefOptions.some(option => option.kind === ref.kind && option.id === ref.id));
     let catalog = initialCatalog;
     if (!catalog.models.some(m => m.id === aiSelectedModel)) aiSelectedModel = status.model;
     let lastDay = '';
@@ -539,8 +581,8 @@ async function renderAssistant() {
     }).join('') : aiEmptyHTML();
     // 输入区放在 .ai-layout 之外、.ai-page 之内：粘在视口底部，滚到对话末尾再落回文档流
     $('#view').innerHTML = `<div class="ai-page"><div class="ai-layout"><section class="ai-conversation" aria-label="健康问答"><div id="aiMessages">${historyHTML}</div></section>
-      <details class="ai-notes" ${window.matchMedia('(min-width:761px)').matches ? 'open' : ''}><summary><h2>依据与范围</h2>${I.chevron}</summary><div><p>只使用「${esc(activeMemberName())}」这一个档案的资料；其它档案的记录、报告和问答各自独立，不会互相检索。</p><p>记录为空表示当前档案未记录，不能当作没有症状或疾病。</p><p>来源包括检验、报告文字、就诊、用药及日常记录；每类最多检索 16 条，总长度有限。</p><p>问答记录只保存在本机这个档案里；想清空时在输入框输入 <code>/reset</code> 并回车，检验、报告等记录不受影响。</p><p>${esc(status.dataNotice)}</p><p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p></div></details></div>
-      <div class="ai-composer"><form id="aiForm"><label class="ai-compose-label" for="aiQuestion">向当前档案提问</label><textarea id="aiQuestion" name="question" required maxlength="4000" rows="3" placeholder="例如：整理最近的检查记录，并注明来源"></textarea><div class="ai-send"><div class="ai-send-left">${archivePickerHTML()}${compactModelPicker(status, catalog)}</div><button class="btn btn-primary" type="submit" ${!status.configured || aiBusy ? 'disabled' : ''}>${aiBusy ? '正在整理…' : '提问'}</button></div><p id="aiStatus" class="ai-compose-status" role="status">${status.configured ? '' : '请先在连接设置中配置模型'}</p><p id="aiModelNotice" class="ai-compose-status" role="status" ${catalog.error ? '' : 'hidden'}>${esc(catalog.error)}</p><p id="aiArchiveStatus" class="ai-archive-status" role="status"></p></form></div></div>`;
+      <details class="ai-notes" ${window.matchMedia('(min-width:761px)').matches ? 'open' : ''}><summary><h2>依据与范围</h2>${I.chevron}</summary><div><p>只使用「${esc(activeMemberName())}」这一个档案的资料；其它档案的记录、报告和问答各自独立，不会互相检索。</p><p>记录为空表示当前档案未记录，不能当作没有症状或疾病。</p><p>来源包括检验、报告文字、就诊、用药及日常记录；每类最多检索 16 条，总长度有限。</p><p>问答记录只保存在本机这个档案里；想清空时在输入框输入 <code>/reset</code> 并回车，检验、报告等记录不受影响。输入 <code>/</code> 还能引用某份报告、某次就诊或某天的检验，被引用的记录排在最前。</p><p>${esc(status.dataNotice)}</p><p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p></div></details></div>
+      <div class="ai-composer"><form id="aiForm"><label class="ai-compose-label" for="aiQuestion">向当前档案提问</label><div id="aiRefs" class="ai-refs" hidden></div><textarea id="aiQuestion" name="question" required maxlength="4000" rows="3" aria-controls="aiSlash" aria-expanded="false" aria-autocomplete="list" placeholder="例如：整理最近的检查记录，并注明来源（输入 / 选择指令或引用记录）"></textarea><div id="aiSlash" class="ai-slash" role="listbox" aria-label="指令与引用记录" hidden></div><div class="ai-send"><div class="ai-send-left">${archivePickerHTML()}${compactModelPicker(status, catalog)}</div><button class="btn btn-primary" type="submit" ${!status.configured || aiBusy ? 'disabled' : ''}>${aiBusy ? '正在整理…' : '提问'}</button></div><p id="aiStatus" class="ai-compose-status" role="status">${status.configured ? '' : '请先在连接设置中配置模型'}</p><p id="aiModelNotice" class="ai-compose-status" role="status" ${catalog.error ? '' : 'hidden'}>${esc(catalog.error)}</p><p id="aiArchiveStatus" class="ai-archive-status" role="status"></p></form></div></div>`;
     $('#aiModel').addEventListener('change', e => {
       aiSelectedModel = e.target.value;
       $('#aiModelShort').textContent = shortModelName(aiSelectedModel);
@@ -559,7 +601,7 @@ async function renderAssistant() {
         if (!catalog.models.some(m => m.id === aiSelectedModel)) aiSelectedModel = catalog.models[0]?.id || status.model;
         $('#aiModel').innerHTML = modelOptions(catalog, aiSelectedModel);
         modelPicker.update(catalog);
-        $('#aiModelNotice').textContent = catalog.error || `已更新 ${catalog.models.length} 个图片模型`;
+        $('#aiModelNotice').textContent = catalog.error || `已更新 ${catalog.models.length} 个可用模型`;
         $('#aiModelShort').textContent = shortModelName(aiSelectedModel);
         $('#aiStatus').textContent = '';
       } catch (error) { if (currentPage() === 'assistant') $('#aiModelNotice').textContent = error.message; }
@@ -567,6 +609,97 @@ async function renderAssistant() {
     });
     const form = $('#aiForm'), button = form.querySelector('[type=submit]'), box = $('#aiQuestion');
     const configured = !!status.configured;
+    const refHost = $('#aiRefs'), slash = $('#aiSlash');
+    let slashItems = [], slashIndex = -1, slashStart = -1, slashPending = false;
+
+    /* 引用的记录挂在输入框上方，问题文本里不掺标记；发送成功才清空 */
+    function renderRefChips() {
+      if (!refHost) return;
+      refHost.hidden = !aiRefPicked.length;
+      refHost.innerHTML = aiRefPicked.map((ref, index) => `<span class="ai-ref-chip"><span class="ai-ref-kind">${esc(AI_SOURCE_KINDS[ref.kind] || '记录')}</span><span class="ai-ref-text">${esc([ref.date, ref.label].filter(Boolean).join(' · '))}</span><button class="ai-ref-remove" type="button" data-ref-remove="${index}" aria-label="移除这条引用">${I.close}</button></span>`).join('');
+    }
+    function closeSlash() {
+      if (slash.hidden) return;
+      slash.hidden = true;
+      slash.innerHTML = '';
+      slashItems = []; slashIndex = -1; slashStart = -1;
+      box.setAttribute('aria-expanded', 'false');
+      box.removeAttribute('aria-activedescendant');
+    }
+    aiSlashClose?.();
+    aiSlashClose = closeSlash;
+    aiSlashController?.abort();
+    aiSlashController = new AbortController();
+    const slashSignal = aiSlashController.signal;
+    document.addEventListener('pointerdown', e => {
+      if (slash.hidden || slash.contains(e.target) || e.target === box) return;
+      closeSlash();
+    }, { signal: slashSignal });
+    function syncSlashActive() {
+      const options = [...slash.querySelectorAll('.ai-slash-item')];
+      options.forEach((option, index) => {
+        const active = index === slashIndex;
+        option.classList.toggle('is-active', active);
+        option.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      const active = options[slashIndex];
+      if (active) {
+        box.setAttribute('aria-activedescendant', active.id);
+        active.scrollIntoView({ block: 'nearest' });
+      } else box.removeAttribute('aria-activedescendant');
+    }
+    function paintSlash(query) {
+      slashItems = aiSlashItems(query);
+      slash.innerHTML = aiSlashHTML(slashItems);
+      slash.hidden = false;
+      slashIndex = slashItems.length ? 0 : -1;
+      box.setAttribute('aria-expanded', 'true');
+      syncSlashActive();
+    }
+    function openSlash(start) {
+      slashStart = start;
+      paintSlash('');
+    }
+    function applySlash(index) {
+      const item = slashItems[index];
+      if (!item) return;
+      const caret = Math.max(box.selectionStart, slashStart);
+      if (item.type === 'cmd') {
+        const text = '/' + item.value;
+        box.value = box.value.slice(0, slashStart) + text + box.value.slice(caret);
+        const pos = slashStart + text.length;
+        box.setSelectionRange(pos, pos);
+      } else {
+        const ref = item.ref;
+        if (!aiRefPicked.some(picked => picked.kind === ref.kind && picked.id === ref.id)) {
+          aiRefPicked.push({ kind: ref.kind, id: ref.id, label: ref.label, date: ref.date });
+          renderRefChips();
+        }
+        // 触发用的 /xxx 拿掉，两边留一个空格，免得和前后的字粘在一起
+        let before = box.value.slice(0, slashStart);
+        if (before && !/\s$/.test(before)) before += ' ';
+        box.value = before + box.value.slice(caret);
+        box.setSelectionRange(before.length, before.length);
+      }
+      closeSlash();
+      syncComposer();
+      box.focus({ preventScroll: true });
+    }
+    slash.addEventListener('pointerdown', e => { if (e.target.closest('[data-slash-index]')) e.preventDefault(); });
+    slash.addEventListener('click', e => {
+      const option = e.target.closest('[data-slash-index]');
+      if (option) applySlash(Number(option.dataset.slashIndex));
+    });
+    form.addEventListener('click', e => {
+      const chip = e.target.closest('[data-ref-remove]');
+      if (!chip) return;
+      aiRefPicked.splice(Number(chip.dataset.refRemove), 1);
+      renderRefChips();
+      // 摘掉引用通常还要接着写问题：把光标还给输入框末尾
+      box.focus({ preventScroll: true });
+      box.setSelectionRange(box.value.length, box.value.length);
+    });
+    renderRefChips();
     /* 输入 /reset 时把按钮改成「执行」：清空历史不需要模型，没配模型也该能用 */
     function syncComposer() {
       if (aiBusy) return;
@@ -589,6 +722,9 @@ async function renderAssistant() {
       modelPicker.disable(true);
       $('#aiModelRefresh').disabled = true;
       box.value = '';
+      aiRefPicked = [];
+      renderRefChips();
+      closeSlash();
       try {
         const result = await featureAPI('/ai/reset', {});
         if (currentPage() !== 'assistant' || !form.isConnected) return;
@@ -609,9 +745,42 @@ async function renderAssistant() {
         }
       }
     }
-    box.addEventListener('input', syncComposer);
-    /* 输入框是多行文本，Enter 默认换行；只有整条内容是指令时才让 Enter 直接执行 */
+    box.addEventListener('input', () => {
+      syncComposer();
+      /* 刚敲下 / 才开面板：光标挪回旧的 /reset 上不该再弹出来 */
+      if (slashPending) {
+        slashPending = false;
+        if (box.value[box.selectionStart - 1] === '/') { openSlash(box.selectionStart - 1); return; }
+      }
+      if (slash.hidden) return;
+      const token = box.value.slice(slashStart, box.selectionStart);
+      if (!token.startsWith('/') || /[\s\n]/.test(token) || token.length > 32 || box.selectionStart < slashStart) { closeSlash(); return; }
+      paintSlash(token.slice(1));
+    });
+    /* 多行输入框里 Enter 默认换行：面板打开时用它选中，整条是指令时用它执行 */
     box.addEventListener('keydown', e => {
+      if (!slash.hidden) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!slashItems.length) return;
+          slashIndex = (slashIndex + (e.key === 'ArrowDown' ? 1 : -1) + slashItems.length) % slashItems.length;
+          syncSlashActive();
+          return;
+        }
+        if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && !e.isComposing) {
+          if (!slashItems.length) { closeSlash(); return; }
+          e.preventDefault();
+          // 已经敲全 /reset 时直接执行，省的选一遍再按一次回车
+          if (aiCommand(box.value)) { closeSlash(); form.requestSubmit(); return; }
+          applySlash(slashIndex);
+          return;
+        }
+        if (e.key === 'Escape') { e.preventDefault(); closeSlash(); return; }
+      }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && box.selectionStart === box.selectionEnd) {
+        const before = box.value.slice(0, box.selectionStart);
+        if (!before.trim() || /[\s\n]$/.test(before)) slashPending = true;
+      }
       if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
       if (!aiCommand(box.value)) return;
       e.preventDefault();
@@ -665,12 +834,17 @@ async function renderAssistant() {
       button.textContent = '正在整理…';
       $('#aiStatus').textContent = '';
       $('.ai-empty')?.remove();
+      closeSlash();
+      const refs = aiRefPicked.map(ref => ({ kind: ref.kind, id: ref.id }));
       appendTurn(pendingHTML(question), Date.now());
       box.value = '';
       $('#aiPending')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const startedAt = Date.now();
       try {
-        const result = await featureAPI('/ai/chat', { question, model: aiSelectedModel });
+        const result = await featureAPI('/ai/chat', { question, model: aiSelectedModel, refs });
+        if (currentPage() !== 'assistant') return;
+        aiRefPicked = [];
+        renderRefChips();
         if (currentPage() !== 'assistant') return;
         const html = chatHTML(result, Date.now() - startedAt);
         const pending = $('#aiPending');

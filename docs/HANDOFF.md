@@ -117,7 +117,7 @@ cd F:/Health/server && .venv/Scripts/python.exe health_server.py
 | POST | `/ocr` | 图片 → 文本行（TSV） |
 | GET | `/ping` | 探活 |
 
-AI 与成员相关的接口在 `server/health_features.py` 里另注册（`/api/ai/status|models|config|history|chat|reset`、`/api/profiles`、`/api/agent`），都按 `X-Health-Profile` 切库。`POST /api/ai/reset` 清空当前成员的 `ai_chat`，**路由里必须先用 `self._body()` 读掉请求体**：服务是 HTTP/1.1 keep-alive，POST 不读 body，残余字节会被当成下一条请求行，紧接着的请求直接 501（排查时表现为「清空成功了，但之后接口全挂」）。
+AI 与成员相关的接口在 `server/health_features.py` 里另注册（`/api/ai/status|models|config|history|chat|reset|refs`、`/api/profiles`、`/api/agent`），都按 `X-Health-Profile` 切库。`GET /api/ai/refs` 只列可引用的记录（报告 15 份、就诊 8 次、按日期 6 批检验），供输入框的 `/` 面板用；`POST /api/ai/chat` 的 `refs` 是 `[{kind,id}]`，服务端在 `context()` 里先展开成来源并标 `pinned`，普通检索再跳过同一条，最后统一按截断结果重新编号 `S1…`。`POST /api/ai/reset` 清空当前成员的 `ai_chat`，**路由里必须先用 `self._body()` 读掉请求体**：服务是 HTTP/1.1 keep-alive，POST 不读 body，残余字节会被当成下一条请求行，紧接着的请求直接 501（排查时表现为「清空成功了，但之后接口全挂」）。
 
 整表替换的选择是刻意的：记录量在千级，一次写全表比做增量协议省事得多，事务保证不会写半个。**真到万级再改增量。**
 
