@@ -9,8 +9,8 @@
 
 约束（与项目原则一致）：
   * 只监听 127.0.0.1，外部机器访问不到；
-  * 不联网：没有对外请求，模型与数据都在本机；
-  * OCR 只做「图片 → 文字」，结构化仍由页面里的解析器 + 人工勾选完成。
+  * 默认不联网；AI 问答仅在配置模型后按需发送当前成员的检索记录；
+  * 报告图片直接交给配置的多模态模型，结果经预览核对后保存。
 
 启动：双击「启动健康档案.bat」，或 .venv\\Scripts\\python.exe health_server.py
 接口：
@@ -28,10 +28,11 @@
   PUT  /api/todos           请求体 = 用户新增的复诊待办数组（整表替换，事务内）
   GET  /api/export          带图片的 v2 备份（下载）
   POST /api/import          导入 v2 备份（请求体 = JSON）
-  GET  /ping                服务与识别引擎状态
+  GET  /ping                服务与多模态模型配置状态
   POST /ocr                 请求体 = 图片字节，返回文字行
 """
 
+import contextvars
 import base64
 import json
 import mimetypes
@@ -45,8 +46,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-HOST = "127.0.0.1"
-PORT = 8765
+# 监听地址与端口：本机跑默认 127.0.0.1:8765，行为不变；
+# 托管到线上沙箱时只给一个端口、且要求 bind 0.0.0.0，靠这两个环境变量切换。
+HOST = os.environ.get("HEALTH_HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT") or 8765)
 MAX_JSON = 32 * 1024 * 1024          # 报告图片走 base64，留足余量
 MAX_IMAGE = 24 * 1024 * 1024
 
@@ -59,9 +62,20 @@ BACKUP_KEEP_DAYS = 30        # 每日滚动备份保留天数（每天最多 1 �
 EXPORT_REMIND_DAYS = 7       # 超过多少天没导出 JSON 就提醒用户
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import ocr_server                                  # 复用识别逻辑，别再写一遍
+import health_features                            # 多模态报告解析与档案问答
 
-_db_lock = threading.Lock()
+_db_lock = threading.RLock()
+_profile_scope = contextvars.ContextVar("health_profile", default="default")
+
+
+def db_path():
+    pid = _profile_scope.get()
+    return DB_PATH if pid == "default" else DB_PATH.parent / (DB_PATH.stem + "_members") / pid / "health.db"
+
+
+def image_dir():
+    return IMG_DIR if _profile_scope.get() == "default" else db_path().parent / "files"
+
 
 # 报告原件可查看的文件后缀（图片 / PDF / DICOM）。只做清单与打开，不改动文件。
 ORIG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".pdf", ".dcm", ".dicom", ".tif", ".tiff"}
@@ -101,14 +115,14 @@ def list_originals():
 # ---------------------------------------------------------------- 数据库
 
 def connect():
-    c = sqlite3.connect(DB_PATH, timeout=10)
+    c = sqlite3.connect(db_path(), timeout=10)
     c.row_factory = sqlite3.Row
     return c
 
 
 def init_db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    IMG_DIR.mkdir(parents=True, exist_ok=True)
+    db_path().parent.mkdir(parents=True, exist_ok=True)
+    image_dir().mkdir(parents=True, exist_ok=True)
     with connect() as c:
         c.execute("PRAGMA journal_mode=WAL")
         c.executescript("""
@@ -249,6 +263,12 @@ def init_db():
           meta TEXT DEFAULT '', flag INTEGER DEFAULT 0, created_at INTEGER,
           due_date TEXT DEFAULT '', follow_type TEXT DEFAULT ''
         );
+        -- 个人基础资料用户覆盖值：只存用户「页内编辑保存」的字段值，key = data.js 里
+        -- ARCHIVE.profile.fields 的 k（如「姓名／称呼」「睡眠与作息」）。渲染时 profileFields()
+        -- 优先读用户值，其次回退静态档案；删除行即恢复静态值。不改 data.js 文件本身。
+        CREATE TABLE IF NOT EXISTS profile_override (
+          k TEXT PRIMARY KEY, v TEXT DEFAULT '', updated_at INTEGER
+        );
         """)
         # 增量迁移（幂等）：老库补上定性结果与异常标志两列，绝不 DROP / 清空数据。
         cols = {row[1] for row in c.execute("PRAGMA table_info(labs)")}
@@ -283,7 +303,7 @@ def init_db():
 
 def _backup_dir() -> Path:
     """备份目录跟随数据库位置（-d 测试库时备份到它旁边，绝不碰正式数据）。"""
-    return DB_PATH.parent / "backups"
+    return db_path().parent / "backups"
 
 
 _BACKUP_NAME = re.compile(r"^health-(\d{4}-\d{2}-\d{2})\.db$")
@@ -296,7 +316,7 @@ def backup_db(force=False):
     * 每天只留 1 份：当天已有且非 force 时直接跳过（幂等，重复启动不重复生成）；
     * 没库（如全新环境）时什么也不做。
     """
-    if not DB_PATH.exists():
+    if not db_path().exists():
         return None
     bdir = _backup_dir()
     bdir.mkdir(parents=True, exist_ok=True)
@@ -306,7 +326,7 @@ def backup_db(force=False):
     tmp = dest.with_name(dest.name + ".tmp")
     src = dst = None
     try:
-        src = sqlite3.connect(DB_PATH, timeout=10)
+        src = sqlite3.connect(db_path(), timeout=10)
         dst = sqlite3.connect(tmp)
         with dst:
             src.backup(dst)
@@ -487,9 +507,16 @@ def get_all():
             "SELECT id,text,group_name AS groupName,meta,flag,created_at AS createdAt,"
             "COALESCE(due_date,'') AS dueDate,COALESCE(follow_type,'') AS followType "
             "FROM todo_item ORDER BY created_at, id")]
+        profile_overrides = {r["k"]: _s(r["v"]) for r in c.execute(
+            "SELECT k,v FROM profile_override")}
         row = c.execute("SELECT v FROM meta WHERE k='savedAt'").fetchone()
         saved_at = int(row["v"]) if row else None
+    if _profile_scope.get() != "default":
+        for report in reports:
+            if report.get("file"):
+                report["file"] = report["file"].split("?")[0] + "?profile=" + _profile_scope.get()
     return {"labs": labs, "reports": reports, "weights": weights,
+            "profileOverrides": profile_overrides,
             "body": body, "done": done, "savedAt": saved_at,
             "allergies": allergies, "familyHistory": family_history, "surgeries": surgeries,
             "visits": visits, "medications": medications, "vitals": vitals,
@@ -599,14 +626,14 @@ def replace_labs(rows):
 # ---------------------------------------------------------------- 报告图片
 
 DATA_URL = re.compile(r"^data:image/(jpeg|jpg|png|webp);base64,(.+)$", re.S)
-FILE_URL = re.compile(r"^/files/([A-Za-z0-9._-]+)$")
+FILE_URL = re.compile(r"^/files/([A-Za-z0-9._-]+)(?:\?profile=[A-Za-z0-9_-]+)?$")
 
 
 def _drop_file(name):
     if not name:
         return
     try:
-        (IMG_DIR / name).unlink(missing_ok=True)
+        (image_dir() / name).unlink(missing_ok=True)
     except OSError:
         pass
 
@@ -619,7 +646,7 @@ def _store_file(report_id, data_url):
     ext = "png" if m.group(1) == "png" else ("webp" if m.group(1) == "webp" else "jpg")
     raw = base64.b64decode(m.group(2))
     name = f"{report_id}.{ext}"
-    (IMG_DIR / name).write_bytes(raw)
+    (image_dir() / name).write_bytes(raw)
     return "/files/" + name
 
 
@@ -633,7 +660,7 @@ def replace_reports(rows):
             if DATA_URL.match(f):
                 new = _store_file(r["id"], f)
             elif FILE_URL.match(f):
-                new = f
+                new = "/files/" + FILE_URL.match(f).group(1)
             else:
                 new = ""
             # 换了图或删了图，把旧文件清掉，别在磁盘上越积越多
@@ -708,6 +735,37 @@ def replace_issue_status(data):
         c.execute("DELETE FROM issue_status")
         c.executemany(
             "INSERT OR REPLACE INTO issue_status (id,status,note,updated_at) VALUES (?,?,?,?)",
+            rows)
+        c.execute("INSERT OR REPLACE INTO meta (k,v) VALUES ('savedAt',?)", (str(int(time.time() * 1000)),))
+    return len(rows)
+
+
+def replace_profile_overrides(data):
+    """整表替换「个人基础资料用户覆盖值」（事务内，绝不 DROP 用户其他数据）。
+
+    接受 {k: v} 或 [{k, v}]；v 为空串视为「恢复默认」（不写入，回退静态档案）。返回写入条数。
+    """
+    if isinstance(data, dict) and "profileOverrides" in data:
+        data = data.get("profileOverrides") or {}
+    rows = []
+    if isinstance(data, dict):
+        for k, v in data.items():
+            v = _s(v).strip()
+            if not v:
+                continue
+            rows.append((_s(k), v, int(time.time() * 1000)))
+    elif isinstance(data, list):
+        for i, r in enumerate(data):
+            if not isinstance(r, dict):
+                continue
+            v = _s(r.get("v")).strip()
+            if not v:
+                continue
+            rows.append((_s(r.get("k")) or f"pf-{i}", v, int(time.time() * 1000)))
+    with _db_lock, connect() as c:
+        c.execute("DELETE FROM profile_override")
+        c.executemany(
+            "INSERT OR REPLACE INTO profile_override (k,v,updated_at) VALUES (?,?,?)",
             rows)
         c.execute("INSERT OR REPLACE INTO meta (k,v) VALUES ('savedAt',?)", (str(int(time.time() * 1000)),))
     return len(rows)
@@ -826,7 +884,7 @@ def export_payload():
     d = get_all()
     for r in d["reports"]:
         m = FILE_URL.match(r.get("file") or "")
-        p = IMG_DIR / m.group(1) if m else None
+        p = image_dir() / m.group(1) if m else None
         if p and p.exists():
             ext = p.suffix.lstrip(".").lower()
             mime = "jpeg" if ext in ("jpg", "jpeg") else ext
@@ -844,6 +902,7 @@ def export_payload():
         "dietDays": d["dietDays"], "dietWeeks": d["dietWeeks"],
         "sleepLogs": d["sleepLogs"],
         "issueStatus": d["issueStatus"], "todoItems": d["todoItems"],
+        "profileOverrides": d["profileOverrides"],
     }
 
 
@@ -954,7 +1013,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/ping":
-            eng = ocr_server._engine
+            model = health_features.ai_status()
             bdir = _backup_dir()
             try:
                 backups = sorted(x.name for x in bdir.glob("health-*.db"))
@@ -962,9 +1021,10 @@ class Handler(BaseHTTPRequestHandler):
                 backups = []
             st = export_status()
             self._json({
-                "ok": True, "db": str(DB_PATH), "root": str(ROOT),
-                "engine": "rapidocr" if ocr_server._api == 2 else ("rapidocr_onnxruntime" if ocr_server._api == 1 else ""),
-                "ready": eng is not None, "error": ocr_server._engine_error,
+                "ok": True, "db": str(db_path()), "root": str(ROOT),
+                "engine": model["model"], "local": model["local"],
+                "connectionLabel": model["connectionLabel"], "dataNotice": model["dataNotice"],
+                "ready": model["configured"], "error": "" if model["configured"] else "尚未配置多模态模型",
                 "backupDir": str(bdir), "backups": backups,
                 "lastExportAt": st["lastExportAt"], "exportDue": st["due"],
             })
@@ -992,7 +1052,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if p.startswith("/files/"):
             name = os.path.basename(unquote(p[7:]))
-            self._file(IMG_DIR / name, "no-cache")
+            self._file(image_dir() / name, "no-cache")
             return
         # 静态托管：只放行白名单内的页面/样式/脚本/图片，其余一律 404
         rel = unquote(p).lstrip("/") or "index.html"
@@ -1034,6 +1094,8 @@ class Handler(BaseHTTPRequestHandler):
             elif p == "/api/state":
                 replace_state(data.get("weights") or [], data.get("done") or {},
                               data.get("body"))
+                if "profileOverrides" in data:
+                    replace_profile_overrides(data.get("profileOverrides") or {})
                 self._json({"ok": True})
             elif p == "/api/history":
                 if not isinstance(data, dict):
@@ -1080,24 +1142,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urlparse(self.path).path
-        if p == "/ocr":
-            raw = self._body(MAX_IMAGE)
-            if not raw:
-                self._json({"ok": False, "error": "请求里没有图片"}, 400)
-                return
-            if raw is False:
-                self._json({"ok": False, "error": "图片超过 24MB，先压缩再传"}, 413)
-                return
-            t0 = time.time()
-            try:
-                items = ocr_server.recognize(raw)
-            except Exception as e:
-                self._json({"ok": False, "error": f"识别失败：{e}"}, 500)
-                return
-            lines = ocr_server.group_lines(items)
-            self._json({"ok": True, "lines": lines, "ms": int((time.time() - t0) * 1000),
-                        "low": len([l for l in lines if l["score"] < 0.6]), "n": len(lines)})
-            return
         if p == "/api/import":
             data = self._json_body()
             if not isinstance(data, dict):
@@ -1124,6 +1168,8 @@ class Handler(BaseHTTPRequestHandler):
                     replace_issue_status(data.get("issueStatus") or {})
                 if "todoItems" in data:
                     replace_todo_items(data.get("todoItems") or [])
+                if "profileOverrides" in data:
+                    replace_profile_overrides(data.get("profileOverrides") or {})
                 hist = {k: data[k] for k in
                         ("allergies", "familyHistory", "surgeries", "visits", "medications")
                         if k in data}
@@ -1157,6 +1203,8 @@ def main(argv):
         pass
 
     init_db()
+    import health_features
+    health_features.install(sys.modules[__name__])
     bk = run_housekeeping()
     srv = ThreadingHTTPServer((HOST, port), Handler)
     url = f"http://{HOST}:{port}/"
@@ -1167,19 +1215,9 @@ def main(argv):
     print(f"  数据   {DB_PATH}")
     print(f"  图片   {IMG_DIR}")
     print(f"  备份   {_backup_dir()}")
-    print("  范围   只监听本机，不联网")
+    print("  范围   仅 AI 问答在配置模型后按需连接模型服务")
     print("  退出   关掉这个窗口，或按 Ctrl+C")
     print("")
-
-    def warm():
-        try:
-            t0 = time.time()
-            ocr_server.load_engine()
-            print("  识别   引擎就绪（%.1fs）\n" % (time.time() - t0))
-        except Exception as e:
-            print("  识别   引擎加载失败：%s（不影响数据读写）\n" % e)
-
-    threading.Thread(target=warm, daemon=True).start()
 
     def reminder_loop():
         # 常驻时定期复查：每 6 小时看一次是否该提醒导出（到期才打印，不刷屏）

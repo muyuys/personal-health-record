@@ -19,6 +19,8 @@ const svgEl = (tag, attrs) => {
 
 /* ======================= 图标 ======================= */
 const I = {
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9.4 3h5.2l.6 2.5 2.2 1.3 2.5-.7 2.6 4.5-1.8 1.9v2.5l1.8 1.9-2.6 4.5-2.5-.7-2.2 1.3-.6 2.5H9.4l-.6-2.5-2.2-1.3-2.5.7-2.6-4.5L3.3 15v-2.5l-1.8-1.9 2.6-4.5 2.5.7 2.2-1.3.6-2.5Z" transform="translate(2 0) scale(.83)"/><circle cx="12" cy="12" r="3"/></svg>',
+
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 10.6L12 4l8 6.6V20a1 1 0 01-1 1h-4.5v-6h-5v6H5a1 1 0 01-1-1v-9.4z" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8.5h3l1.4-2h7.2L17 8.5h3a1 1 0 011 1V19a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5a1 1 0 011-1z" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.4"/></svg>',
@@ -40,24 +42,26 @@ const I = {
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v11m0 0l4-4m-4 4l-4-4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 19h14" stroke-linecap="round"/></svg>',
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V5m0 0L8 9m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 19h14" stroke-linecap="round"/></svg>',
   check2: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  symptom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h9.5L19 7v13a1 1 0 01-1 1H6a1 1 0 01-1-1V4.5a1 1 0 011-1z" stroke-linejoin="round"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4" stroke-linecap="round"/></svg>'
+  symptom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3.5h9.5L19 7v13a1 1 0 01-1 1H6a1 1 0 01-1-1V4.5a1 1 0 011-1z" stroke-linejoin="round"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4" stroke-linecap="round"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 00-3-3L5 17v3z" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 6.5l3 3" stroke-linecap="round"/></svg>'
 };
 
 /* ======================= 数据 ======================= */
-const LS_LABS = 'personal-health-labs-v1';
-const LS_STATE = 'personal-health-archive-v1';
-const LS_REPORTS = 'personal-health-reports-v1';
-const LS_HISTORY = 'personal-health-history-v1';
-const LS_VITALS = 'personal-health-vitals-v1';
-const LS_SYMPTOMS = 'personal-health-symptoms-v1';
-const LS_DIET_DAYS = 'personal-health-diet-days-v1';
-const LS_DIET_WEEKS = 'personal-health-diet-weeks-v1';
-const LS_SLEEP = 'personal-health-sleep-logs-v1';
-const LS_ISSUE_STATUS = 'personal-health-issue-status-v1';
-const LS_TODOS = 'personal-health-todo-items-v1';
+const LS_LABS = 'personal-health-labs-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_STATE = 'personal-health-archive-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_REPORTS = 'personal-health-reports-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_HISTORY = 'personal-health-history-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_VITALS = 'personal-health-vitals-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_SYMPTOMS = 'personal-health-symptoms-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_DIET_DAYS = 'personal-health-diet-days-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_DIET_WEEKS = 'personal-health-diet-weeks-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_SLEEP = 'personal-health-sleep-logs-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_ISSUE_STATUS = 'personal-health-issue-status-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_TODOS = 'personal-health-todo-items-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
 /* 提醒相关：上次导出备份的时间（纪元秒，离线模式用）、当天已忽略的提醒 key 映射 */
-const LS_LAST_EXPORT = 'personal-health-last-export-v1';
-const LS_REMIND_DISMISS = 'personal-health-remind-dismiss-v1';
+const LS_LAST_EXPORT = 'personal-health-last-export-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_REMIND_DISMISS = 'personal-health-remind-dismiss-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
+const LS_PROFILE = 'personal-health-profile-overrides-v1' + (MEMBER_ID === 'default' ? '' : ':' + MEMBER_ID);
 const CATS = ['血常规', '肝功能', '肾功能', '其他'];
 const PRESETS = {
   '血常规': ['白细胞计数', '红细胞计数', '血红蛋白', '血小板计数'],
@@ -98,6 +102,11 @@ let sleepLogs = [];
    两者都持久化到 data/health.db（离线降级到 localStorage）。 */
 let issueStatus = {};
 let todoItems = [];
+/* 个人基础资料用户覆盖值：key = ARCHIVE.profile.fields 的 k（如「姓名／称呼」），
+   value = 用户页内编辑保存的字符串。profileFields() 优先读这里，其次回退静态档案。
+   持久化到 data/health.db 的 profile_override 表（离线降级到 localStorage），
+   server 模式随状态写到 /api/state 的 profileOverrides 字段。 */
+let profileOverrides = {};
 const ALLERGY_CATS = ['药物', '食物', '接触物', '其他'];
 const ALLERGY_SEVS = [['critical', '危急（曾致严重反应）'], ['high', '较重'], ['mild', '较轻']];
 const VISIT_TYPES = ['门诊', '急诊', '住院', '体检', '线上问诊', '其他'];
@@ -145,9 +154,11 @@ const ui = {
   /* 明细「记录明细」折叠面板的展开状态（内存态，刷新回默认折叠）。
      翻页会整页重渲染，这里记下已交互的面板，重渲染后保持展开。 */
   openDetails: {},
+  /* 跳转后要定位的区块 id（侧栏「存储详情」/失败态「查看」用；读后即清） */
+  scrollTo: '',
   /* 「减重」聚合页当前分段（内存态）：overview / weight / diet / review。
      既可由页内 chip 切换，也可由旧 #/diet 链接映射到 diet 段。 */
-  slImSeg: 'overview',
+  slImSeg: 'weight',
   /* 就医记录：日期/搜索面板是否展开（筛选条件本身在 URL，不在这里） */
   recFilterOpen: false,
   /* 搜索框防抖句柄 */
@@ -544,7 +555,7 @@ function normReport(x) {
     panel: String(x.panel || '').trim().slice(0, 20),
     specimen: String(x.specimen || '').trim().slice(0, 20),
     hospital: String(x.hospital || '').trim().slice(0, 60),
-    note: String(x.note || '').trim().slice(0, 300),
+    note: String(x.note || '').trim().slice(0, 24000),
     file: String(x.file || ''),
     createdAt: Number(x.createdAt) || Date.now()
   };
@@ -824,6 +835,17 @@ function loadAll() {
       if (Array.isArray(p)) todoItems = p.filter(validTodoItem).map(normTodoItem);
     }
   } catch (e) { /* 忽略损坏的自建待办 */ }
+  try {
+    const raw = localStorage.getItem(LS_PROFILE);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && typeof p === 'object' && !Array.isArray(p)) {
+        const clean = {};
+        Object.keys(p).forEach(k => { if (typeof p[k] === 'string' && p[k].trim()) clean[k] = p[k]; });
+        profileOverrides = clean;
+      }
+    }
+  } catch (e) { /* 忽略损坏的个人资料覆盖 */ }
   /* 不再用档案里的起点值补一条「记录」：没称过就是没称过，
      起点只出现在进度条的刻度上，不冒充明细表里的记录 */
 }
@@ -886,6 +908,7 @@ async function bootStore() {
     if (Array.isArray(d.sleepLogs)) sleepLogs = d.sleepLogs.filter(validSleepLog).map(normSleepLog);
     if (d.issueStatus && typeof d.issueStatus === 'object') issueStatus = d.issueStatus;
     if (Array.isArray(d.todoItems)) todoItems = d.todoItems.filter(validTodoItem).map(normTodoItem);
+    if (d.profileOverrides && typeof d.profileOverrides === 'object' && !Array.isArray(d.profileOverrides)) profileOverrides = d.profileOverrides;
     exportStatus = (d.export && typeof d.export === 'object') ? d.export : null;
     storeMode = 'server';
     // 浏览器里还留着旧数据：给一个「合并进来」的入口（库里已有也不覆盖，按去重键合并）
@@ -966,8 +989,18 @@ function persistLabs(next) {
 }
 function persistState() {
   state.savedAt = Date.now();
-  if (storeMode === 'server') { pushJSON('/state', { weights: state.weights, done: state.done, body: state.body }); return true; }
+  if (storeMode === 'server') { pushJSON('/state', { weights: state.weights, done: state.done, body: state.body, profileOverrides }); return true; }
   try { localStorage.setItem(LS_STATE, JSON.stringify(state)); return true; }
+  catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
+}
+/* 个人基础资料覆盖值：server 模式随状态提交到 /api/state；local 模式单独存一个 key，
+   与 state 分开，避免旧版 loadAll 不认识时被覆盖丢失。 */
+function persistProfileOverrides() {
+  if (storeMode === 'server') {
+    pushJSON('/state', { weights: state.weights, done: state.done, body: state.body, profileOverrides });
+    return true;
+  }
+  try { localStorage.setItem(LS_PROFILE, JSON.stringify(profileOverrides)); return true; }
   catch (e) { toast('保存失败：浏览器存储不可用或空间不足'); return false; }
 }
 function persistReports(next) {

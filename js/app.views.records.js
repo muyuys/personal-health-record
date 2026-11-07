@@ -330,15 +330,15 @@ function renderHome() {
      <button class="btn btn-primary" data-act="record">${I.plus}记一笔</button>`, false);
 
   const from = encodeURIComponent('#/home');
-  const tasks = nextUpTodos(3);
+  const tasks = nextUpTodos(5);
   const recent = homeRecent(3);
   const openCount = openTodos().length;
   const overdue = overdueTodos().length;
 
-  $('#view').innerHTML = `<div class="stack">
+  $('#view').innerHTML = `<div class="stack home-layout">
     ${criticalAllergyNoticeHTML()}
 
-    <section class="grid-quick" aria-label="快捷记录">
+    <section class="grid-quick home-shortcuts" aria-label="快捷记录">
       <a class="quick-card quick-card--accent" href="#/new-visit?from=${from}">
         <span class="qc-icon">${I.plus}</span>
         <span class="qc-body"><span class="qc-title">记一次就诊</span><span class="qc-desc">日期 + 一段记录</span></span>
@@ -353,7 +353,7 @@ function renderHome() {
       </button>
     </section>
 
-    ${tasks.length ? `<section>
+    ${tasks.length ? `<section class="home-next">
       <div class="section-head" style="margin-top:0">
         <h2>接下来要做</h2>
         <a class="btn-plain" href="#/todos">全部 ${openCount} 项${overdue ? `<span class="rdot" role="img" aria-label="其中 ${overdue} 项已过期"></span>` : ''} →</a>
@@ -363,7 +363,7 @@ function renderHome() {
       </div>
     </section>` : ''}
 
-    <section>
+    <section class="home-recent">
       <div class="section-head" style="margin-top:0">
         <h2>最近记录</h2>
         <a class="btn-plain" href="#/records">查看全部 →</a>
@@ -412,9 +412,18 @@ function writeRecordsQuery(next, { replace = false } = {}) {
   else goHash(hash);
 }
 
+/* 本页只收医学事件（027 §4.2）：
+   就诊 + 报告 + 无报告归属的检验结果 + 用药 + 静态历史档案。
+   体重 / 体征 / 症状 / 睡眠属于「日常健康」(#/daily) 的四分段，不进这条时间线——
+   recentStream() 是首页「最近记录」的事件流，那里混日常是对的，本页不能直接复用。 */
+const MEDICAL_KINDS = ['visit', 'report', 'lab', 'med', 'legacy'];
+function medicalStream() {
+  return recentStream().filter(e => MEDICAL_KINDS.includes(e.kind));
+}
+
 /* 按筛选档取事件（全部档额外含静态历史档案事件） */
 function recordEvents(q) {
-  const all = recentStream();
+  const all = medicalStream();
   const byType = t => all.filter(e => e.kind === t);
   if (q.t === 'visit') return byType('visit');
   if (q.t === 'report') return byType('report').concat(byType('lab'));
@@ -430,10 +439,11 @@ function filterEvents(list, q) {
     return [e.title, e.summary, e.meta, e.chip].join(' ').toLowerCase().includes(kw);
   });
 }
-/* 每档条数：搜索与日期不参与计数，避免「全部 3」这种自相矛盾的徽标 */
+/* 每档条数：搜索与日期不参与计数，避免「全部 3」这种自相矛盾的徽标
+   口径与 recordEvents 一致，只数医学事件；否则「全部」会把睡眠的 1000+ 条算进去 */
 function recordCounts(q) {
   const base = { all: 0, visit: 0, report: 0, med: 0 };
-  const scope = filterEvents(recentStream(), { q: q.q, from: q.from, to: q.to });
+  const scope = filterEvents(medicalStream(), { q: q.q, from: q.from, to: q.to });
   scope.forEach(e => {
     base.all += 1;
     if (e.kind === 'visit') base.visit += 1;
@@ -550,7 +560,8 @@ function renderRecords() {
   const fromHash = encodeURIComponent(location.hash || '#/records');
 
   setHead('', '就医记录', '同一次看病，资料、用药、安排都在一条里',
-    `<button class="icon-btn" data-act="search" aria-label="搜索档案">${I.search}</button>
+    `<a class="btn btn-ghost" href="#/metrics">${I.trend}指标趋势</a>
+     <button class="icon-btn" data-act="search" aria-label="搜索档案">${I.search}</button>
      <a class="btn btn-secondary" href="#/new-report?from=${fromHash}">${I.file}存一份报告</a>
      <a class="btn btn-primary" href="#/new-visit?from=${fromHash}">${I.plus}记一次就诊</a>`, false);
 
@@ -565,7 +576,7 @@ function renderRecords() {
 
     <div id="recFilterPanel" ${panelOpen ? '' : 'hidden'}>
       <div class="card" style="padding:var(--sp-4)">
-        <div class="form-grid" style="grid-template-columns:1.4fr .8fr .8fr">
+        <div class="form-grid record-filter-fields">
           <div class="field">
             <label for="recQ">搜索</label>
             <input id="recQ" type="search" value="${esc(q.q)}" placeholder="医院、诊断、药名、报告名" autocomplete="off">
@@ -1142,7 +1153,7 @@ function renderReportComposer() {
     </section>
 
     <section class="card">
-      <div class="form-grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <div class="form-grid report-fields">
         <div class="field">
           <label for="rpDate">报告日期</label>
           <input id="rpDate" type="date" value="">
@@ -1169,15 +1180,15 @@ function renderReportComposer() {
     </section>
 
     <section class="card">
-      <div class="card-head"><h2>从图片提取文字（可选）</h2></div>
-      <p class="hint">识别结果只是参考，不会自动变成诊断。识别失败不影响保存原件。</p>
+      <div class="card-head"><h2>多模态解析报告（可选）</h2></div>
+      <p class="hint">图片将发送至配置的多模态模型。保存时会保留解析文字供问答引用，请核对后保存。解析失败也可保存原件，供问答直接读图。</p>
       <div class="form-actions" style="margin-top:var(--sp-3)">
-        <button class="btn btn-secondary" type="button" data-act="rp-ocr">提取文字</button>
+        <button class="btn btn-secondary" type="button" data-act="rp-ocr">AI 解析图片</button>
       </div>
       <p class="hint" id="rpOcrState" role="status" style="margin-top:var(--sp-2)"></p>
       <div class="field" style="margin-top:var(--sp-3)">
-        <label for="rpOcrText">识别到的文字（可编辑）</label>
-        <textarea id="rpOcrText" style="min-height:120px" placeholder="识别结果会出现在这里，也可以直接粘贴报告文字"></textarea>
+        <label for="rpOcrText">模型解析的文字（请核对）</label>
+        <textarea id="rpOcrText" maxlength="20000" style="min-height:120px" placeholder="识别结果会出现在这里，也可以直接粘贴报告文字"></textarea>
       </div>
     </section>
 
@@ -1226,7 +1237,7 @@ function reportSignature() {
   return JSON.stringify({
     date: g('rpDate'), title: g('rpTitle'), hospital: g('rpHospital'),
     panel: g('rpPanel'), specimen: g('rpSpecimen'), note: g('rpNote'),
-    visit: g('rpVisit'), files: reportComposer.files.map(f => f.name)
+    ocrText: g('rpOcrText'), visit: g('rpVisit'), files: reportComposer.files.map(f => f.name)
   });
 }
 function refreshReportThumbs() {
@@ -1290,13 +1301,14 @@ function saveReportComposer() {
         id: newId('rep'),
         file: f.dataUrl
       }, base, {
-        title: base.title || (reportComposer.files.length > 1 ? `报告原件 ${i + 1}` : '报告原件')
+        title: base.title || (reportComposer.files.length > 1 ? `报告原件 ${i + 1}` : '报告原件'),
+        note: i === Math.max(0, reportComposer.files.findIndex(f => f.raw)) ? [base.note, g('rpOcrText') ? '模型解析文字（用户保存，需核对）：\n' + g('rpOcrText') : ''].filter(Boolean).join('\n\n') : base.note
       }));
       next.push(rec);
       created.push(rec);
     });
   } else {
-    const rec = normReport(Object.assign({ id: newId('rep'), file: '' }, base));
+    const rec = normReport(Object.assign({ id: newId('rep'), file: '' }, base, { note: [base.note, g('rpOcrText')].filter(Boolean).join('\n\n') }));
     next.push(rec);
     created.push(rec);
   }
@@ -1340,16 +1352,52 @@ function currentDailySeg() {
   try { saved = localStorage.getItem(LS_DAILY_SEG) || ''; } catch (e) { saved = ''; }
   return DAILY_SEGS.includes(saved) ? saved : 'body';
 }
+/* 外层四段的分段控件（027 §6.1）：带轨道 segmented，一屏只允许出现 1 个；
+   body 段内层的「体重 / 饮食 / 复盘」是无轨道 chip，两者层级必须能分开 */
+const DAILY_SEG_META = [
+  { k: 'body', label: '体重与饮食' },
+  { k: 'vitals', label: '血压等体征' },
+  { k: 'symptoms', label: '症状' },
+  { k: 'sleep', label: '睡眠' }
+];
+
+/* 切段：记住选择 + 改写地址栏但不新增历史（否则「返回」会退回上一个分段）。
+   replaceState 不触发 hashchange，所以手动 route() 重渲染。 */
+function setDailySeg(seg) {
+  if (!DAILY_SEGS.includes(seg)) return;
+  try { localStorage.setItem(LS_DAILY_SEG, seg); } catch (e) { /* 隐私模式下忽略 */ }
+  const qs = hashQuery();
+  qs.set('seg', seg);
+  if (seg !== 'body') qs.delete('tab');          // 内层 tab 只在 body 段有效
+  try {
+    history.replaceState(null, '', '#/daily?' + qs.toString());
+    route();
+  } catch (e) {
+    goHash('#/daily?' + qs.toString());          // file:// 下 replaceState 可能抛错
+  }
+}
+
+/* 分段条画在页头下方那个常驻容器里（见 index.html #dailySeg）：
+   各段保存/删除后只重渲染 #view，切换条不受影响，也就不必在每个 render 里各写一遍 */
+function paintDailyNav(seg) {
+  const host = document.getElementById('dailySeg');
+  if (!host) return;
+  host.innerHTML = `<div class="segmented" role="tablist" aria-label="日常健康分段">
+    ${DAILY_SEG_META.map(s => `<button role="tab" data-act="daily-seg" data-seg="${s.k}" class="${s.k === seg ? 'on' : ''}" aria-selected="${s.k === seg ? 'true' : 'false'}">${s.label}</button>`).join('')}
+  </div>`;
+  host.hidden = false;
+}
+
 function renderDailyShell() {
   const seg = currentDailySeg();
   try { localStorage.setItem(LS_DAILY_SEG, seg); } catch (e) { /* 隐私模式下忽略 */ }
   const q = hashQuery();
-  if (seg === 'vitals') return renderVitals();
-  if (seg === 'symptoms') return renderSymptoms();
-  if (seg === 'sleep') return renderSleep();
-  if (q.get('tab') === 'diet') { ui.slImSeg = 'diet'; return renderDiet(); }
-  ui.slImSeg = 'overview';
-  return renderWeight();
+  if (seg === 'vitals') renderVitals();
+  else if (seg === 'symptoms') renderSymptoms();
+  else if (seg === 'sleep') renderSleep();
+  else if (q.get('tab') === 'diet') { ui.slImSeg = 'diet'; renderDiet(); }
+  else { ui.slImSeg = 'weight'; renderWeight(); }
+  paintDailyNav(seg);
 }
 function renderThemesShell() { return renderIssues(); }
 function renderThemeShell() {

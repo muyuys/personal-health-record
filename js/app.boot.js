@@ -1,4 +1,13 @@
 /* ======================= 事件 ======================= */
+$('#railToggle').addEventListener('click', e => {
+  const collapsed = $('.rail').classList.toggle('is-collapsed');
+  const label = collapsed ? '展开侧边栏' : '收起侧边栏';
+  e.currentTarget.setAttribute('aria-expanded', String(!collapsed));
+  e.currentTarget.setAttribute('aria-label', label);
+  e.currentTarget.title = label;
+  e.currentTarget.querySelector('span').textContent = collapsed ? '展开菜单' : '收起菜单';
+});
+
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el) {
@@ -12,13 +21,31 @@ document.addEventListener('click', e => {
   const act = el.dataset.act;
 
   switch (act) {
+    case 'profile-menu':
+      toggleProfileMenu(el);
+      break;
     case 'go': {
       /* 速记/存报告页有未保存内容时先确认，不放用户走掉（027 §9.8） */
       const target = '#/' + (el.dataset.to || '');
       if (composerLeaveGuard(target)) break;
       closeModal();
-      goHash(target);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      /* data-scroll：跳到目标页后定位到某个区块（如侧栏「存储详情」→ 我的→数据存储）。
+         带上 ?scroll=<id> 写进地址，刷新也能回到同一区块；无此标记则回顶部。 */
+      const scrollTo = el.dataset.scroll || '';
+      if (scrollTo) {
+        ui.scrollTo = scrollTo;
+        goHash(`${target}?scroll=${encodeURIComponent(scrollTo)}`);
+      } else {
+        ui.scrollTo = '';
+        goHash(target);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      break;
+    }
+    case 'scroll-to': {
+      const id = el.dataset.target || '';
+      const t = id ? document.getElementById(id) : null;
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
       break;
     }
     case 'back': {
@@ -288,13 +315,17 @@ document.addEventListener('click', e => {
     case 'sl-im-seg': {
       // 「减重」聚合页分段切换：只切内存态并重渲染当前段
       const seg = el.dataset.seg;
-      if (['overview', 'weight', 'diet', 'review'].includes(seg)) {
+      if (['weight', 'diet', 'review'].includes(seg)) {
         ui.slImSeg = seg;
         renderWeight();
         syncChrome('weight');
       }
       break;
     }
+    case 'daily-seg':
+      // 日常健康外层四段（027 §6.1）：体重与饮食 / 血压等体征 / 症状 / 睡眠
+      setDailySeg(el.dataset.seg);
+      break;
     case 'diet-day-add':
       openDietDay(null);
       break;
@@ -394,6 +425,9 @@ document.addEventListener('click', e => {
       break;
     case 'hist-add':
       openHistoryForm(el.dataset.kind, null);
+      break;
+    case 'profile-edit':
+      openProfileEditForm(el.dataset.k || '');
       break;
     case 'hist-edit': {
       const kind = el.dataset.kind;
@@ -570,6 +604,7 @@ document.addEventListener('click', e => {
       labs = []; state.weights = []; state.body = []; state.done = {}; state.savedAt = null; reports = [];
       allergies = []; familyHistory = []; surgeries = []; visits = []; medications = []; symptoms = [];
       dietDays = []; dietWeeks = [];
+      profileOverrides = {};
       try {
         localStorage.removeItem(LS_LABS);
         localStorage.removeItem(LS_STATE);
@@ -578,6 +613,7 @@ document.addEventListener('click', e => {
         localStorage.removeItem(LS_SYMPTOMS);
         localStorage.removeItem(LS_DIET_DAYS);
         localStorage.removeItem(LS_DIET_WEEKS);
+        localStorage.removeItem(LS_PROFILE);
       } catch (err) { }
       loadAll(); route(); toast('本机记录已清空');
       break;
@@ -727,6 +763,71 @@ function openHistoryForm(kind, rec) {
     closeModal();
     renderProfile();
     toast('已保存');
+  });
+}
+
+/* ---------- 个人基础资料：编辑表单 ---------- */
+/* 基础资料各项的中文标签 + 输入提示（k 为 ARCHIVE.profile.fields 的键）。 */
+const PROFILE_EDIT_META = {
+  '姓名／称呼': { label: '姓名／称呼', ph: '如 张三 / 阿明', type: 'text' },
+  '出生日期': { label: '出生日期（年龄将自动计算）', ph: '如 1998-05-12 / 1998年5月12日', type: 'text' },
+  '生理性别（能量估算用）': { label: '生理性别（能量估算用）', ph: '男 / 女', type: 'text' },
+  '身高': { label: '身高', ph: '如 170 cm', type: 'text' },
+  '日常活动': { label: '日常活动', ph: '如 久坐，运动很少', type: 'text' },
+  '睡眠与作息': { label: '睡眠与作息（有睡眠记录时自动汇总）', ph: '如 23:30 睡 7:00 起，约 7 小时；留空则自动取最近记录', type: 'text' },
+  '吸烟／饮酒': { label: '吸烟／饮酒', ph: '如 不吸烟，偶尔饮酒', type: 'text' },
+  '饮食习惯、外卖频率': { label: '饮食习惯、外卖频率', ph: '如 三餐外食，每周外卖 4 次', type: 'text' }
+};
+
+/* 打开"编辑个人基础资料"表单。focusK：从某一行点「编辑」时，滚动/聚焦到该字段。
+   预填规则：有用户覆盖值显示覆盖值；否则显示静态档案里的值（占位性文字如「待补充」
+   显示为空，只留 placeholder）。保存时仅当输入值与「静态档案原值」不同才写入覆盖，
+   未改动的字段不会被误标为「已修改」。 */
+function openProfileEditForm(focusK) {
+  const rows = profileEditableFields();
+  const statics = {};       // 每个字段的静态档案原值（供保存时比对）
+  const fields = rows.map(f => {
+    const meta = PROFILE_EDIT_META[f.k] || { label: f.k, ph: '', type: 'text' };
+    const ov = (profileOverrides && profileOverrides[f.k]) || '';
+    const base = (f.ok && f.v && !/待补充|待填|未记录|待核对/.test(f.v)) ? f.v : '';
+    statics[f.k] = base;
+    const val = ov || base;    // 覆盖值优先；否则预填静态已知值
+    return `<div class="field wide" data-k="${esc(f.k)}"><label>${esc(meta.label)}</label>
+      <input type="${meta.type}" name="pf" data-k="${esc(f.k)}" value="${esc(val)}" data-base="${esc(base)}" maxlength="120" placeholder="${esc(meta.ph)}"></div>`;
+  }).join('');
+  openModal(`
+    <div class="modal-head"><div><h2>编辑个人基础资料</h2><p>保存后写入本机（离线时存浏览器），仅覆盖你修改的内容</p></div>
+    <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button></div>
+    <form id="pfForm">
+      <div class="form-grid">${fields}</div>
+      <p class="hint" style="margin-top:10px">留空或改回原值并保存，会清除该字段的覆盖，回退到档案默认值。<b style="color:var(--ink-2)">年龄</b>由出生日期自动计算、<b style="color:var(--ink-2)">睡眠与作息</b>在有睡眠记录时自动汇总、<b style="color:var(--ink-2)">体重/腰围</b>随记录自动更新，这几项无需手填（手填会覆盖自动汇总）。空白代表未记录，不等于没有。</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">保存</button>
+        <button class="btn btn-ghost" type="button" data-act="close">取消</button>
+        <span class="form-msg" id="pfMsg"></span>
+      </div>
+    </form>`);
+  const form = $('#pfForm');
+  if (!form) return;
+  if (focusK) {
+    const input = form.querySelector(`input[data-k="${focusK}"]`);
+    if (input) setTimeout(() => { input.focus(); input.scrollIntoView({ block: 'center' }); }, 50);
+  }
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const next = { ...profileOverrides };
+    form.querySelectorAll('input[data-k]').forEach(inp => {
+      const k = inp.dataset.k;
+      const val = String(inp.value || '').trim();
+      const base = String(inp.dataset.base || '').trim();
+      // 与静态原值相同 → 不需要覆盖（删除既有覆盖）；否则写入覆盖值
+      if (val && val !== base) next[k] = val; else delete next[k];
+    });
+    profileOverrides = next;
+    persistProfileOverrides();
+    closeModal();
+    renderProfile();
+    toast('个人资料已保存');
   });
 }
 
@@ -963,6 +1064,11 @@ window.addEventListener('resize', () => {
 
 /* ======================= 路由（027 §2.1） ======================= */
 const ROUTES = {
+  metrics: { render: renderMetrics, label: '指标趋势' },
+  assistant: { render: renderAssistant, label: 'AI 问答' },
+  members: { render: renderMembers, label: '成员管理' },
+  settings: { render: renderSettings, label: '设置' },
+  about: { render: renderAbout, label: '关于' },
   home: { render: renderHome, label: '首页' },
   records: { render: renderRecords, label: '就医记录' },
   visit: { render: renderVisitPage, label: '就诊详情' },
@@ -1007,14 +1113,50 @@ function currentPage() {
   return ROUTES[key] ? key : 'home';
 }
 
+/* 从地址 ?scroll=<id> 或 ui.scrollTo 取出要定位的区块 id，读后即清（刷新靠地址栏保留） */
+function applyScrollTarget() {
+  const raw = String(location.hash || '');
+  const qi = raw.indexOf('?');
+  let id = '';
+  if (qi >= 0) {
+    const q = raw.slice(qi + 1);
+    const m = /(?:^|&)scroll=([^&]*)/.exec(q);
+    if (m) id = decodeURIComponent(m[1]);
+  }
+  if (!id && ui.scrollTo) id = ui.scrollTo;
+  ui.scrollTo = '';
+  if (!id) return;
+  const target = document.getElementById(id);
+  if (!target) return;
+  /* 等一帧让布局稳定再滚动；header 遮挡用 scroll-margin-top 交给 CSS 处理 */
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    /* 给键盘/读屏用户把焦点也带过去（不打断滚动） */
+    if (target.hasAttribute('tabindex')) target.focus({ preventScroll: true });
+  });
+}
+
 function route() {
+  closeProfileMenu();
+  if (typeof aiModelPickerClose === 'function') { aiModelPickerClose(); aiModelPickerClose = null; }
   resetIssuesBase();   // 从 data.js 原始状态起算，避免上一轮的页内覆盖污染
   applyLabDerived();   // 每次渲染前从数据库化验重算检验结论，保证问题总表/总览不缺漏、不过期
   applyIssueOverrides(); // 叠加用户「页内修改的问题状态 / 备注」
   const page = currentPage();
+  // Settings places the shared page title in its category rail; restore it before replacing a view.
+  const sharedTitle = document.getElementById('pageTitle');
+  const titleHost = document.querySelector('.page-head-l');
+  if (sharedTitle && titleHost && !titleHost.contains(sharedTitle)) titleHost.insertBefore(sharedTitle, document.getElementById('pageSub'));
+  document.body.classList.toggle('settings-mode', page === 'settings');
+  document.body.classList.toggle('workspace-left', ['members', 'assistant', 'themes', 'theme'].includes(page));
   (ROUTES[page] || ROUTES.home).render();
+  // 日常健康的分段条是页头下方的常驻容器，只在 daily 页显示（渲染函数里已负责画内容）
+  const dailyNav = document.getElementById('dailySeg');
+  if (dailyNav && page !== 'daily') dailyNav.hidden = true;
   syncChrome(page);
   document.title = `${(ROUTES[page] || ROUTES.home).label} · 健康档案`;
+  applyScrollTarget();   // 定位到指定区块（侧栏「存储详情」/失败态「查看」/刷新带 ?scroll=）
+  if (typeof syncStoreRail === 'function') syncStoreRail();   // 重新渲染后刷新存储行状态（含移动端快捷行）
   // 搜索框（仅首页存在内联输入框）
   const s = $('#searchInput');
   if (s) {
@@ -1190,16 +1332,32 @@ function editorHash() {
 function syncStoreRail() {
   const dot = $('#storeDot'), label = $('#storeLabel'), line = $('.store-line');
   if (!dot || !label) return;
+  const more = $('.store-line .store-more');
   if (storeMode === 'server') {
     dot.classList.toggle('off', !!syncBad);
-    label.textContent = syncBad ? '写入失败，去「我的」重试' : '数据已入本机库';
+    label.textContent = syncBad ? '数据库写入失败' : '数据已入本机库';
+    if (more) more.textContent = syncBad ? '查看' : '详情';
     if (line) line.setAttribute('aria-label', syncBad
-      ? '数据写入失败，点开查看存储与帮助'
+      ? '数据库写入失败，点开查看存储与帮助'
       : '数据已存入本机数据库，点开查看存储与帮助');
   } else {
     dot.classList.toggle('off', true);
     label.textContent = '仅存在浏览器里';
+    if (more) more.textContent = '详情';
     if (line) line.setAttribute('aria-label', '本机服务没启动，数据只存在浏览器，点开查看存储与帮助');
+  }
+  if (line) line.title = line.getAttribute('aria-label');
+  /* 移动端「我的」页顶部的存储快捷行（.store-line--m）保持同一状态 */
+  const dotM = $('#storeDotM'), labelM = $('#storeLabelM'), lineM = $('.store-line--m');
+  if (dotM && labelM) {
+    const fail = storeMode === 'server' && !!syncBad;
+    dotM.classList.toggle('off', storeMode !== 'server' || fail);
+    labelM.textContent = storeMode === 'server'
+      ? (fail ? '数据库写入失败' : '数据已入本机库')
+      : '仅存在浏览器里';
+    const moreM = $('.store-line--m .store-more');
+    if (moreM) moreM.textContent = fail ? '查看' : '详情';
+    if (lineM) lineM.setAttribute('aria-label', fail ? '数据库写入失败，点开查看存储与帮助' : '点开查看数据存储详情');
   }
 }
 
@@ -1209,6 +1367,7 @@ function syncStoreRail() {
   const online = await bootStore();
   if (migrateWaistToBody()) persistState();   // 旧腰围搬进围度表，幂等
   await loadOriginals();     // 报告原件磁盘清单（服务模式下），供查看原件 / 缺失核对使用
+  await initMembers();
   buildNav();
   route();
   syncStoreRail();

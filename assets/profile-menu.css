@@ -1,0 +1,33 @@
+/* One archive switcher, anchored to My in either navigation surface. */
+.profile-menu{position:fixed;z-index:65;display:flex;flex-direction:column;width:320px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--bg-card);box-shadow:0 8px 28px rgba(25,31,27,.14);overflow:hidden;font-size:14px;color:var(--ink-2);line-height:1.6}
+.profile-menu-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 8px 12px;flex-shrink:0}
+.profile-menu-head h2{font-size:15px;font-weight:600;margin:0}
+.profile-menu-head p{font-size:12px;color:var(--ink-4);margin:3px 0 0}
+.profile-menu-close{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;border-radius:6px;color:var(--ink-4)}
+.profile-menu-close:hover,.profile-menu-action:hover{background:var(--bg-hover)}
+.profile-menu-close svg{width:16px;height:16px}
+.profile-menu-list{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.profile-menu-member{display:flex;align-items:center;gap:12px;width:100%;min-height:60px;padding:10px;border-radius:7px;text-align:left}
+.profile-menu-member:hover{background:var(--bg-hover)}
+.profile-menu-member[aria-current=true]{background:var(--bg-selected)}
+.profile-menu-avatar{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;border-radius:50%;background:var(--bg-sunken);font-size:14px;color:var(--ink-2)}
+.profile-menu-member>span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}
+.profile-menu-member b{font-size:14px;font-weight:500}
+.profile-menu-member small{display:block;font-size:12px;color:var(--ink-4);margin-top:2px}
+.profile-menu-member>svg{width:16px;height:16px;flex:0 0 16px;color:var(--pine-500)}
+.profile-menu-actions{display:grid;border-top:1px solid var(--line-soft);margin-top:8px;padding-top:6px;flex-shrink:0}
+.profile-menu-action{display:flex;align-items:center;gap:12px;width:100%;min-height:42px;padding:8px 10px;text-align:left;border-radius:6px;font-size:13px}
+.profile-menu-action svg{width:18px;height:18px;flex:0 0 18px;color:var(--ink-4)}
+.profile-menu-form{display:grid;gap:16px;padding:2px 8px 8px;min-height:0;overflow:auto}
+.profile-menu-form label{display:grid;gap:8px;font-size:13px;font-weight:500}
+.profile-menu-form input{width:100%;min-width:0;min-height:42px;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:6px;background:var(--bg-card);padding:9px 10px;font:inherit;font-size:14px;color:var(--ink-1)}
+.profile-menu-form input:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.profile-menu-form p{margin:0;font-size:12px;font-weight:400;color:var(--ink-4);line-height:1.7}
+.profile-menu-form-footer{display:flex;justify-content:flex-end;gap:8px}
+.profile-menu-status{font-size:13px;line-height:1.7;color:var(--ink-4);padding:0 8px;flex-shrink:0;overflow-wrap:anywhere}
+.profile-menu-status:empty{display:none}
+@media(max-width:959px){
+  .profile-menu-close{width:44px;height:44px;flex-basis:44px}
+  .profile-menu-action,.profile-menu-form-footer .btn{min-height:44px}
+  .profile-menu-form input{font-size:16px}
+}

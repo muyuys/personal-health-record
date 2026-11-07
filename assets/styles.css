@@ -1090,7 +1090,7 @@ p.hint .link-btn{color:var(--pine-2);border-bottom:1px solid rgba(47,107,87,.35)
 .pager-size{min-width:26px;height:26px;padding:0 6px;font-size:10.5px}
 
 @media print{
-  .rail,.tabbar,.page-actions,.toast,.modal-root,.no-print,.page-head{display:none !important}
+  .rail,.tabbar,.page-actions,.toast,.modal-root,.no-print,.page-head,.daily-nav{display:none !important}
   body{background:#fff}
   .main{padding:0;max-width:none}
   .card,.hero,.band{box-shadow:none;break-inside:avoid}
@@ -1153,6 +1153,10 @@ a{ color:var(--pine-600); }
 .store-line .dot.off{ background:var(--st-due-dot); }
 .store-line b{ font-weight:500; color:var(--ink-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .store-line .store-more{ margin-left:auto; color:var(--pine-600); flex:0 0 auto; }
+/* 移动端「我的」页顶部的存储快捷行：默认隐藏，≤959px 才出现（此时侧栏整块隐藏） */
+.store-line--m{ display:none; }
+/* 「数据存储」区块：跳转定位时留出与顶部/标签栏的间距，避免被遮挡 */
+#storage{ scroll-margin-top:var(--sp-6); }
 
 /* ---------- 3. 主区与页头 ---------- */
 .main{ max-width:var(--content-max); margin:0 auto; padding:var(--sp-8) var(--sp-8) 48px; }
@@ -1517,6 +1521,17 @@ a{ color:var(--pine-600); }
 .segmented{ background:var(--bg-sunken); border-radius:var(--r-lg); height:36px; }
 .segmented button{ height:30px; border-radius:var(--r-md); font-size:var(--fs-sm); color:var(--ink-4); }
 .segmented button.on{ background:var(--bg-raise); color:var(--ink-1); font-weight:600; }
+/* 日常健康外层四段（027 §6.1）：4 等分铺满、不横向滚动；<360px 折成 2×2。
+   它是有轨道的 segmented，段内的「体重 / 饮食 / 复盘」是无轨道 chip，层级靠轨道区分。
+   挂在页头下方（#dailySeg），不在 #view 里，段内重渲染不会把它冲掉。 */
+.daily-nav{ display:flex; margin-bottom:var(--sp-5); }
+.daily-nav[hidden]{ display:none; }
+.daily-nav .segmented{ display:flex; flex:1 1 auto; min-width:0; }
+.daily-nav .segmented button{ flex:1 1 0; min-width:0; padding:0 var(--sp-2); }
+@media (max-width:359px){
+  .daily-nav .segmented{ flex-wrap:wrap; height:auto; row-gap:2px; }
+  .daily-nav .segmented button{ flex:0 0 calc(50% - 1px); height:30px; }
+}
 .data th{ font-size:var(--fs-cap); color:var(--ink-4); background:var(--bg-sunken); }
 .data td{ font-size:var(--fs-body); color:var(--ink-2); border-bottom:1px solid var(--line-soft); }
 
@@ -1532,6 +1547,7 @@ a{ color:var(--pine-600); }
 @media (max-width:959px){
   .app{ display:block; }
   .rail{ display:none; }
+  .store-line--m{ display:flex; }   /* 移动端侧栏隐藏，用「我的」页顶部的存储快捷行替代「详情」入口 */
   .main{ padding:var(--sp-4) var(--sp-4) calc(88px + env(safe-area-inset-bottom)); max-width:none; }
   .page-head h1{ font-size:24px; }
   .page-sub{ font-size:var(--fs-cap); }

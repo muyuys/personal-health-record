@@ -216,28 +216,46 @@ function renderSummary() {
 function renderProfile() {
   const comp = completeness();
   const si = storeInfo();
-  const req = profileChecklist();
-  const reqOk = req.filter(x => x.ok).length;
   const pfs = profileFields();
   const pfPending = pfs.filter(f => !f.ok).length;
-  const reqPct = Math.round(reqOk / req.length * 100);
-  setHead('PROFILE　个人资料', '个人资料', '空白代表未记录，不等于没有',
-    `<button class="btn btn-ghost" data-act="export">${I.download}导出备份</button>`);
+  setHead('', '个人资料', '空白代表未记录，不等于没有',
+    `<a class="btn btn-ghost" href="#/members">${I.user}成员管理</a><a class="btn btn-ghost" href="#/settings">${I.settings}设置</a><button class="btn btn-ghost" data-act="export">${I.download}导出备份</button>`);
 
   $('#view').innerHTML = `
     <div class="stack">
+      <nav class="profile-shortcuts" aria-label="档案快捷入口"><a href="#/assistant">AI 问答</a><a href="#/metrics">指标趋势</a></nav>
+      <button class="store-line store-line--m" data-act="scroll-to" data-target="storage" aria-label="查看数据存储详情">
+        <span class="dot" id="storeDotM"></span>
+        <b id="storeLabelM">数据已存本机</b>
+        <span class="store-more">详情</span>
+      </button>
       <div class="grid-2">
         <section class="card">
-          <div class="card-head"><h2>基础资料</h2><span class="link">${comp.okP}/${comp.totalP} 项已填</span></div>
-          <p class="hint" style="margin:0 0 8px">共 ${pfs.length} 项，其中 ${pfPending} 项待填。</p>
+          <div class="card-head"><h2>基础资料</h2><span class="link" style="display:flex;align-items:center;gap:8px">${comp.okP}/${comp.totalP} 项已填<button class="btn btn-mini" data-act="profile-edit">${I.edit}编辑</button></span></div>
+          <p class="hint" style="margin:0 0 8px">共 ${pfs.length} 项，其中 ${pfPending} 项待填。<b style="color:var(--ink-2)">年龄、体重、腰围、睡眠</b>会自动从出生日期与健康记录计算，无需手填；其余可点「编辑」修改。带 <span style="color:var(--pine-2)">★</span> 为必填项。</p>
           <table class="data" style="width:100%">
-            <thead><tr><th style="width:40%">项目</th><th>内容</th><th style="width:52px;text-align:right">状态</th></tr></thead>
+            <thead><tr><th style="width:38%">项目</th><th>内容</th><th style="width:96px;text-align:right">状态</th></tr></thead>
             <tbody>
-              ${pfs.map(f => `<tr>
-                <td style="color:var(--muted);font-size:11px">${esc(f.k)}</td>
+              ${pfs.map(f => {
+                const editable = PROFILE_EDITABLE_KEYS.includes(f.k);
+                const req = isRequiredField(f.k) ? ' <span style="color:var(--pine-2)" title="必填项">★</span>' : '';
+                let tag = '';
+                if (f.src === 'auto') tag = ` <span class="chip chip-sm" title="${esc(f.srcNote || '自动派生')}">自动</span>`;
+                else if (f.overridden) tag = ' <span class="chip chip-sm">已修改</span>';
+                let actCell;
+                if (f.src === 'auto') {
+                  actCell = `<span style="color:var(--muted-2);font-size:11px">自动</span>`;
+                } else if (editable) {
+                  actCell = `<button class="link-btn" data-act="profile-edit" data-k="${esc(f.k)}" title="编辑「${esc(f.k)}」">编辑</button>`;
+                } else {
+                  actCell = `<span style="color:${f.ok ? 'var(--muted-2)' : 'var(--muted-3)'};font-size:11px">${f.ok ? '已填' : '待填'}</span>`;
+                }
+                return `<tr>
+                <td style="color:var(--muted);font-size:11px">${esc(f.k)}${req}${tag}</td>
                 <td style="color:${f.ok ? 'var(--ink-2)' : 'var(--muted-3)'}">${esc(f.v)}</td>
-                <td style="text-align:right;color:${f.ok ? 'var(--muted-2)' : 'var(--muted-3)'}">${f.ok ? '已填' : '待填'}</td>
-              </tr>`).join('')}
+                <td style="text-align:right">${actCell}</td>
+              </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </section>
@@ -257,30 +275,11 @@ function renderProfile() {
       </div>
 
       <section class="card">
-        <div class="card-head"><h2>个人资料必填清单</h2><span class="chip ${reqPct === 100 ? 'green' : 'amber'} chip-sm">${reqPct}% · ${reqOk}/${req.length}</span></div>
-        <div class="track" style="background:#EDE8DC;height:8px"><i style="width:${reqPct}%;background:var(--pine-2)"></i></div>
-        <p class="hint" style="margin:12px 0 0">共 ${req.length} 项，其中 ${req.length - reqOk} 项待填。</p>
-        <div class="table-wrap" style="margin-top:14px">
-          <table class="data" style="width:100%">
-            <thead><tr><th style="width:30%">必填项</th><th style="width:64px">状态</th><th>当前字段 / 内容</th></tr></thead>
-            <tbody>
-              ${req.map(x => `<tr>
-                <td style="color:var(--ink-2)">${esc(x.label)}</td>
-                <td style="color:${x.ok ? 'var(--muted-2)' : 'var(--muted-3)'}">${x.ok ? '已填' : '待填'}</td>
-                <td style="color:${x.ok ? 'var(--ink-2)' : 'var(--muted-3)'}">${esc(x.value)}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        <p class="hint" style="margin:12px 0 0">「待填」不等于「没有」；未记录的项目不自动补全。过敏 / 手术住院 / 家族史 / 当前用药按结构化记录自动判定（任务 005/010），其余字段补充后请同步更新 <code>assets/data.js</code> 与 <code>docs/健康档案/个人资料.md</code>。</p>
-      </section>
-
-      <section class="card">
         <div class="card-head"><h2>过敏 · 家族史 · 手术住院</h2><span class="link">就医与急救必读</span></div>
         ${historySectionsHTML()}
       </section>
 
-      <section class="card">
+      <section class="card" id="storage" tabindex="-1">
         <div class="card-head"><h2>数据存储</h2><span class="link">${si.server ? (syncBad ? '写入失败' : '本机数据库已连接') : '浏览器存储'}</span></div>
         <div class="store-stat">
           <div><b>${labs.length}</b><span>条检验记录</span></div>

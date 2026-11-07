@@ -194,6 +194,44 @@ function waistNow() {
   const w = waistRecord();
   return w ? w.waist : null;
 }
+/* ---------- 智能派生：从已有数据自动算，不手填 ---------- */
+/* 由出生日期算周岁（每天刷新自动更新）。支持 1998-05-12 / 1998/5/12 / 1998.5.12。无效返回 null。 */
+function ageFromBirth(birthStr) {
+  if (!birthStr) return null;
+  const m = /(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/.exec(String(birthStr));
+  if (!m) return null;
+  const by = +m[1], bm = +m[2], bd = +m[3];
+  if (bm < 1 || bm > 12 || bd < 1 || bd > 31) return null;
+  const now = new Date();
+  let age = now.getFullYear() - by;
+  const hadBirthday = (now.getMonth() + 1) > bm || ((now.getMonth() + 1) === bm && now.getDate() >= bd);
+  if (!hadBirthday) age -= 1;
+  if (age < 0 || age > 150) return null;
+  return age;
+}
+/* 近 N 天睡眠记录汇总：返回 {count, avgHours, bed, wake, span} 或 null（无记录）。
+   时长 = hours + minutes/60；入睡/起床取出现最多的 HH:MM（取 time 部分）。 */
+function sleepSummary(days) {
+  const n = days || 30;
+  const cutoff = new Date(Date.now() - n * 86400000);
+  const cut = `${cutoff.getFullYear()}-${pad(cutoff.getMonth() + 1)}-${pad(cutoff.getDate())}`;
+  const recs = sleepLogs.filter(s => s.date >= cut && (Number.isFinite(s.hours) || Number.isFinite(s.minutes)));
+  if (!recs.length) return null;
+  let totalH = 0, cnt = 0;
+  const bedCount = {}, wakeCount = {};
+  recs.forEach(s => {
+    const h = (Number.isFinite(s.hours) ? s.hours : 0) + (Number.isFinite(s.minutes) ? s.minutes / 60 : 0);
+    if (h > 0) { totalH += h; cnt++; }
+    const b = (s.bedtime || '').split(' ').pop();
+    const w = (s.wake || '').split(' ').pop();
+    if (/^\d{1,2}:\d{2}$/.test(b)) bedCount[b] = (bedCount[b] || 0) + 1;
+    if (/^\d{1,2}:\d{2}$/.test(w)) wakeCount[w] = (wakeCount[w] || 0) + 1;
+  });
+  const mode = o => { let best = '', bc = 0; Object.keys(o).forEach(k => { if (o[k] > bc) { bc = o[k]; best = k; } }); return best; };
+  const avgHours = cnt ? Math.round((totalH / cnt) * 10) / 10 : null;
+  return { count: recs.length, avgHours, bed: mode(bedCount), wake: mode(wakeCount), span: n };
+}
+
 /* 个人资料字段：腰围随本机记录更新；过敏/手术/家族史有结构化记录时标记为已填 */
 function profileFields() {
   const w = waistRecord();
@@ -211,10 +249,46 @@ function profileFields() {
     '当前全部药物／补充剂': med
   };
   return ARCHIVE.profile.fields.map(f => {
-    if (f.k === '腰围' && w) return { ...f, v: `${num(w.waist)} cm（${w.date} 记录）`, ok: true };
-    if (structured[f.k]) return { ...f, v: structured[f.k], ok: true };
-    return f;
+    if (f.k === '腰围' && w) return { ...f, v: `${num(w.waist)} cm（${w.date} 记录）`, ok: true, src: 'auto', srcNote: '围度记录自动更新' };
+    if (structured[f.k]) return { ...f, v: structured[f.k], ok: true, src: 'auto', srcNote: '结构化记录自动汇总' };
+    // 用户页内编辑保存的覆盖值优先于静态档案；有值即 ok:true
+    const ov = profileOverrides && profileOverrides[f.k];
+    if (typeof ov === 'string' && ov.trim()) {
+      // 性别、身高、体重、出生日期等即便手动填过，仍需让「年龄」「体重」等派生项优先按公式算
+      return { ...f, v: ov, ok: true, overridden: true, src: 'edited' };
+    }
+    // 智能派生：年龄 ← 出生日期；睡眠与作息 ← 近期睡眠记录；体重 ← 围度/体重记录
+    if (f.k === '年龄') {
+      const birth = (profileOverrides && profileOverrides['出生日期']) || (ARCHIVE.profile.birth && ARCHIVE.profile.birth !== '未记录' ? ARCHIVE.profile.birth : '');
+      const age = ageFromBirth(birth);
+      if (age !== null) return { ...f, v: `${age} 岁（按出生日期自动计算）`, ok: true, src: 'auto', srcNote: '由出生日期计算' };
+    }
+    if (f.k === '睡眠与作息') {
+      const s = sleepSummary(30);
+      if (s) {
+        const parts = [];
+        if (s.avgHours != null) parts.push(`近${s.span}天平均 ${s.avgHours} 小时`);
+        if (s.bed && s.wake) parts.push(`多 ${s.bed} 睡 / ${s.wake} 起`);
+        const txt = parts.join('，') + `（${s.count} 条睡眠记录自动汇总）`;
+        return { ...f, v: txt, ok: true, src: 'auto', srcNote: '睡眠记录自动汇总' };
+      }
+    }
+    if (f.k === '最近自报体重') {
+      const wr = state.weights && state.weights.length ? state.weights.slice().sort((a, b) => b.date.localeCompare(a.date))[0] : null;
+      if (wr && Number.isFinite(wr.kg)) return { ...f, v: `${num(wr.kg)} kg（${wr.date} 记录）`, ok: true, src: 'auto', srcNote: '体重记录自动更新' };
+    }
+    return { ...f, src: f.ok ? 'static' : 'empty' };
   });
+}
+/* 用户可编辑的基础资料字段清单：静态只读的基础项（姓名、出生日期、睡眠、吸烟饮酒、
+   饮食、身高、日常活动、年龄、性别等），不含腰围（随围度记录自动更新）与过敏/手术/
+   家族史/用药（这些走各自结构化表，不在此处覆写）。返回 ARCHIVE.profile.fields 的 k 列表。 */
+const PROFILE_EDITABLE_KEYS = [
+  '姓名／称呼', '出生日期', '生理性别（能量估算用）', '身高',
+  '日常活动', '睡眠与作息', '吸烟／饮酒', '饮食习惯、外卖频率'
+];
+function profileEditableFields() {
+  return profileFields().filter(f => PROFILE_EDITABLE_KEYS.includes(f.k));
 }
 /* 个人资料必填清单（10 项，来自产品缺口分析 P0/P1）。
    每项映射到 profileFields() 里的一个字段；ok 决定「已填 / 待填」。
@@ -238,6 +312,10 @@ function profileChecklist() {
     const f = byK[it.field] || { v: '待填', ok: false };
     return { key: it.key, label: it.label, value: f.v, ok: !!f.ok };
   });
+}
+/* 某字段是否为「必填项」——供基础资料单一表用 ★ 标注，替代原来的重复清单表 */
+function isRequiredField(k) {
+  return PROFILE_REQUIRED.some(it => it.field === k);
 }
 function allTodos() {
   const base = ARCHIVE.todos.flatMap(g => g.items.map(i => ({ ...i, group: g.group })));

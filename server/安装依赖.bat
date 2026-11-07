@@ -7,10 +7,7 @@ if not exist ".venv\Scripts\python.exe" (
   python -m venv .venv
   if errorlevel 1 goto fail
 )
-echo   Installing rapidocr + onnxruntime ...
-".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -i https://pypi.org/simple rapidocr onnxruntime
-if errorlevel 1 goto fail
+echo   Ready. The health server uses Python standard library only.
 echo.
 echo   Done. Double-click "启动健康档案.bat" in the parent folder.
 echo.

@@ -601,7 +601,7 @@ function openReport(id) {
   rpDraft = rec ? { ...rec } : { id: '', date: todayISO(), title: '', panel: '', specimen: '', hospital: '', note: '', file: '' };
   openModal(`
     <div class="modal-head">
-      <div><h2>${rec ? '编辑报告' : '添加报告'}</h2><p>原件存在本机浏览器里，不联网、不上传</p></div>
+      <div><h2>${rec ? '编辑报告' : '添加报告'}</h2><p>原件保存在当前档案；AI 解析时会发送图片至配置的模型服务</p></div>
       <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button>
     </div>
     <div id="modalBody"></div>`, 'wide');
@@ -621,7 +621,7 @@ function renderReportBody() {
         <div class="field"><label>检验样本</label><input name="specimen" list="rpSpecimens" value="${esc(rpDraft.specimen)}" placeholder="如 血清" maxlength="20" autocomplete="off">
           <datalist id="rpSpecimens">${SPECIMENS.map(p => `<option value="${esc(p)}"></option>`).join('')}</datalist></div>
         <div class="field"><label>医院 / 机构</label><input name="hospital" value="${esc(rpDraft.hospital)}" placeholder="如 北京同仁医院" maxlength="60"></div>
-        <div class="field"><label>备注</label><input name="note" value="${esc(rpDraft.note)}" placeholder="如 肾内科门诊、空腹抽血" maxlength="300"></div>
+        <div class="field wide"><label>报告文字 / 备注</label><textarea name="note" rows="5" maxlength="24000" placeholder="粘贴并核对报告正文，供档案问答引用">${esc(rpDraft.note)}</textarea></div>
       </div>
       <div class="rp-file">
         <div class="rp-shot">${rpDraft.file
@@ -699,6 +699,7 @@ function viewReport(id) {
       <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button>
     </div>
     ${rec.note ? `<p class="hint" style="margin-bottom:10px">${esc(rec.note)}</p>` : ''}
+    ${n ? `<section class="report-metric-links"><h3>报告指标 · 查看历史变化</h3>${labs.filter(row => row.reportId === rec.id).map(row => `<a href="${esc(labMetricHref(row))}" data-act="close">${esc(row.name)}<span>${labValueText(row)} ${esc(row.unit)} →</span></a>`).join('')}</section>` : '<p class="hint">原件图片不会自动进入指标趋势，需先核对并录入检验结果。</p>'}
     <div class="rp-view">${rec.file
       ? `<img src="${esc(rec.file)}" alt="${esc(rec.title)} 原件">`
       : '<div class="empty">这份报告只登记了信息，没有存原件图片。</div>'}</div>
@@ -723,7 +724,7 @@ function exportAll() {
   // 服务模式下图片在磁盘上，需要服务端把文件读回 base64 才能换机恢复
   if (storeMode === 'server') {
     const a = document.createElement('a');
-    a.href = API + '/export';
+    a.href = API + '/export?profile=' + encodeURIComponent(MEMBER_ID);
     a.download = `健康档案备份-${todayISO()}.json`;
     a.click();
     markExported();
@@ -733,7 +734,8 @@ function exportAll() {
   const payload = {
     format: 'health-archive', version: 2, exportedAt: new Date().toISOString(),
     labs, weights: state.weights, body: state.body, done: state.done, reports,
-    allergies, familyHistory, surgeries, visits, medications, symptoms
+    allergies, familyHistory, surgeries, visits, medications, symptoms,
+    profileOverrides
   };
   const json = JSON.stringify(payload, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -871,8 +873,17 @@ async function importFile(file) {
         dietWeeks = [...wm.values()];
         persistDietWeeks();
       }
+      if (obj.profileOverrides && typeof obj.profileOverrides === 'object' && !Array.isArray(obj.profileOverrides)) {
+        const clean = { ...profileOverrides };
+        Object.keys(obj.profileOverrides).forEach(k => {
+          const v = obj.profileOverrides[k];
+          if (typeof v === 'string' && v.trim()) clean[k] = v;
+        });
+        profileOverrides = clean;
+      }
       if (hCount) persistHistory();
       persistState();
+      persistProfileOverrides();
       okCount = recs.length;
       wCount = Array.isArray(obj.weights) ? obj.weights.length : 0;
       bCount = Array.isArray(obj.body) ? obj.body.filter(validBody).length : 0;
@@ -936,13 +947,13 @@ async function ocrCheck() {
   const svc = await ocrPing();
   if (!imp || imp.mode !== 'image') return;
   if (!svc) {
-    setOcrState(`<b>识别服务没在运行</b><span>双击 <code>启动健康档案.bat</code>，看到绿色的「引擎 就绪」后回到这里，按「重新检测」。</span>
+    setOcrState(`<b>识别服务没在运行</b><span>双击 <code>启动健康档案.bat</code>，配置多模态模型后回到这里，按「重新检测」。</span>
       <button class="btn btn-mini" data-act="ocr-check">重新检测</button>`, 'warn');
   } else if (!svc.ready) {
-    setOcrState(`<b>识别服务正在加载</b><span>首次启动要几秒，稍等一下再点「重新检测」。</span>
+    setOcrState(`<b>尚未配置多模态模型</b><span>请到「设置 → 模型连接」查看配置方法，配置后重新启动服务。</span>
       <button class="btn btn-mini" data-act="ocr-check">重新检测</button>`);
   } else {
-    setOcrState(`<b>识别服务已就绪</b><span>${esc(svc.engine || 'rapidocr')} · 图片不落盘、不出本机</span>`, 'ok');
+    setOcrState(`<b>多模态解析已配置</b><span>${esc(svc.engine)} · ${esc(svc.dataNotice || '图片将发送至配置的模型服务。')}结果须核对</span>`, 'ok');
   }
 }
 
@@ -952,7 +963,7 @@ async function ocrImages(files) {
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     setOcrState(`<b>正在识别第 ${i + 1}/${files.length} 张</b><span>${esc(f.name)}</span>`);
-    const r = await ocrCall('/ocr', {
+    const r = await ocrCall('/api/ai/parse', {
       method: 'POST',
       body: f,
       headers: { 'Content-Type': f.type || 'image/jpeg' }
@@ -1018,7 +1029,7 @@ function renderImportBody() {
     body.innerHTML = `${tips}
       <div class="imp-drop">${I.upload}
         <b>选择报告照片</b>
-        <p>手机拍的检验单、体检报告都行，可一次选多张。识别只在这台机器的服务里跑，照片不落盘、不上传。</p>
+        <p>手机拍的检验单、体检报告都行，可一次选多张。图片会发送到配置的多模态模型，解析后请核对再保存。</p>
         <button class="btn btn-ghost" data-act="imp-file-img">选择图片</button>
       </div>
       <div class="ocr-state" id="ocrState"><b>正在检查识别服务…</b></div>

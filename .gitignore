@@ -27,6 +27,8 @@
 
 # 第三方工具源码（按约定不纳入）
 /Tools/cloud-dicom-downloader/
+# 本机一次性报告同步脚本内嵌个人检查数据，保留在本地。
+/Tools/同步报告原件.py
 
 # --- 个人健康数据 / 诊断 / 检查记录：绝不进 Git（隐私）---
 # 已迁入 private_data/。注意：不能整目录 /private_data/ 忽略，
@@ -58,6 +60,7 @@
 # --- 根目录说明 ---
 !/README.md
 !/README.html
+!/GLOSSARY.md
 !/启动健康档案.bat
 
 # --- 杂项 ---

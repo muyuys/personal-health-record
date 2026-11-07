@@ -22,6 +22,7 @@
      unit: 'kg', low, high,                       // 参考区间（可选）
      target,                                      // 目标线（可选）
      height,                                      // 高度 px（可选）
+     aggregate: false,                            // 保留每次原始测量（默认按跨度聚合）
      gapDays: 10,                                 // 超过几天算断档（默认 14）
      onePerDay: true,                             // 同一天只取最后一条（默认 false）
    });
@@ -129,6 +130,10 @@ function _chartAggregate(pts, kind) {
     .sort((a, b) => a.ts - b.ts);
 }
 
+function _chartHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
 function echartsChart(host, opt = {}) {
   if (!host) return;
   if (typeof echarts === 'undefined') {
@@ -161,7 +166,7 @@ function echartsChart(host, opt = {}) {
       _chartDispose(host);
       host.style.height = '';
       host.style.minHeight = '0';
-      host.innerHTML = `<div class="empty" style="padding:24px 12px;color:var(--muted-3);text-align:center">只有 ${p0 ? _fmtYMD(_dayTs(p0.date)) : ''} 这一次记录${p0 ? `（${Math.round(Number(p0.value) * 100) / 100}${unit ? ' ' + unit : ''}）` : ''}。再记一次，才看得出是升还是降。</div>`;
+      host.innerHTML = `<div class="empty" style="padding:24px 12px;color:var(--muted-3);text-align:center">只有 ${p0 ? _fmtYMD(_dayTs(p0.date)) : ''} 这一次记录${p0 ? `（${Math.round(Number(p0.value) * 100) / 100}${unit ? ' ' + _chartHTML(unit) : ''}）` : ''}。再记一次，才看得出是升还是降。</div>`;
       return;
     }
   }
@@ -231,7 +236,7 @@ function echartsChart(host, opt = {}) {
         const tip = kind === 'day' || p.n === 1
           ? _fmtYMD(p.ts)
           : `${_fmtYMD(p.first)} ~ ${_fmtYMD(p.last)}（${p.n} 次均值）`;
-        const point = { value: [p.ts, p.value], tip, dv: p.value.toFixed(dec) };
+        const point = { value: [p.ts, p.value], tip, dv: opt.aggregate === false ? String(p.value) : p.value.toFixed(dec) };
         const over = (low !== null && p.value < low) || (high !== null && p.value > high);
         data.push(over ? { ...point, itemStyle: { color: ECHARTS_THEME.warn, borderColor: ECHARTS_THEME.warn } } : point);
       });
@@ -289,7 +294,7 @@ function echartsChart(host, opt = {}) {
   };
 
   const chartWidth = host.clientWidth || 900;
-  let curBucket = _chartBucketFor((maxTs - minTs) / _CHART_DAY, chartWidth);
+  let curBucket = opt.aggregate === false ? 'day' : _chartBucketFor((maxTs - minTs) / _CHART_DAY, chartWidth);
 
   const chart = echarts.init(host, null, { renderer: 'canvas' });
   _chartInstances.set(host, chart);
@@ -320,8 +325,8 @@ function echartsChart(host, opt = {}) {
           const v = Array.isArray(p.value) ? p.value[1] : p.value;
           const shown = p.data && p.data.dv !== undefined ? p.data.dv : v;
           const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:5px"></span>`;
-          const name = hit.length > 1 ? `${p.seriesName}　` : '';
-          return `${dot}${name}<b>${shown}${unit ? ' ' + unit : ''}</b>`;
+          const name = hit.length > 1 ? `${_chartHTML(p.seriesName)}　` : '';
+          return `${dot}${name}<b>${shown}${unit ? ' ' + _chartHTML(unit) : ''}</b>`;
         }).join('<br/>');
         return `<div style="font-weight:600;margin-bottom:3px">${date}</div>${lines}`;
       }
@@ -386,7 +391,7 @@ function echartsChart(host, opt = {}) {
         if (!Number.isFinite(a) || !Number.isFinite(b)) { a = minTs; b = maxTs; }
         const span = (b - a) / _CHART_DAY;
         const patch = { xAxis: { axisLabel: { formatter: _axisFmtFor(span) } } };
-        const next = _chartBucketFor(span, chartWidth);
+        const next = opt.aggregate === false ? 'day' : _chartBucketFor(span, chartWidth);
         if (next !== curBucket) { curBucket = next; patch.series = build(next); patch.graphic = _bucketNote(next); }
         chart.setOption(patch);
       }, 120);

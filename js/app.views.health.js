@@ -3,8 +3,11 @@
 const NAV = [
   { id: 'home', label: '首页', icon: 'home' },
   { id: 'records', label: '就医记录', icon: 'file' },
+  { id: 'metrics', label: '指标趋势', icon: 'trend' },
   { id: 'daily', label: '日常健康', icon: 'heart' },
   { id: 'themes', label: '健康主题', icon: 'check' },
+  { id: 'assistant', label: 'AI 问答', icon: 'pulse' },
+  { id: 'settings', label: '设置', icon: 'settings', bottom: true },
   { id: 'me', label: '我的', icon: 'user', bottom: true }
 ];
 /* 底部导航：标签 ≤2 字，顺序与侧栏一致 */
@@ -17,7 +20,8 @@ const TABS = [
 ];
 
 function navItemHTML(n) {
-  return `<button class="nav-item" type="button" data-act="go" data-to="${n.id}">${I[n.icon] || I.grid}<span>${esc(n.label)}</span></button>`;
+  const profile = n.id === 'me';
+  return `<button class="nav-item" type="button" data-act="${profile ? 'profile-menu' : 'go'}" data-to="${n.id}" aria-label="${profile ? '我的与档案切换' : esc(n.label)}" title="${profile ? '我的 · 切换档案' : esc(n.label)}" ${profile ? 'aria-haspopup="dialog" aria-expanded="false" aria-controls="profileMenu"' : ''}>${I[n.icon] || I.grid}<span>${esc(n.label)}</span></button>`;
 }
 
 function buildNav() {
@@ -25,26 +29,31 @@ function buildNav() {
   const bottom = NAV.filter(n => n.bottom).map(navItemHTML).join('');
   $('#nav').innerHTML = `${main}<div class="nav-spacer"></div><div class="nav-divider"></div>${bottom}`;
   $('#tabbar').innerHTML = TABS.map(([to, label, icon]) =>
-    `<button class="tab" type="button" data-act="go" data-to="${to}">${I[icon] || I.grid}<span>${label}</span></button>`).join('');
+    `<button class="tab" type="button" data-act="${to === 'me' ? 'profile-menu' : 'go'}" data-to="${to}" ${to === 'me' ? 'aria-label="我的与档案切换" aria-haspopup="dialog" aria-expanded="false" aria-controls="profileMenu"' : ''}>${I[icon] || I.grid}<span>${label}</span></button>`).join('');
 }
 
 /* 页面 → 一级项高亮（027 §1.2）：辅助页归属其发起模块 */
 const NAV_OF_PAGE = {
   home: 'home', todos: 'home',
   records: 'records', visit: 'records', 'new-visit': 'records', 'new-report': 'records', summary: 'records',
-  daily: 'daily',
+  metrics: 'metrics', daily: 'daily',
   themes: 'themes', theme: 'themes', labs: 'themes', 'labs-all': 'themes',
-  me: 'me'
+  assistant: 'assistant', members: 'me', settings: 'settings', about: 'settings', me: 'me'
 };
 
 function syncChrome(page) {
   const navKey = NAV_OF_PAGE[page] || 'home';
-  $$('#nav .nav-item').forEach(b => b.classList.toggle('active', b.dataset.to === navKey));
-  $$('#tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.to === navKey));
+  $$('#nav .nav-item').forEach(b => {
+    const active = b.dataset.to === navKey;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  $$('#tabbar .tab').forEach(b => b.classList.toggle('on', b.dataset.to === (['settings', 'members'].includes(navKey) ? 'me' : navKey)));
 }
 
 function setHead(eyebrow, title, sub, actions, withSearch = true) {
-  $('#pageEyebrow').textContent = eyebrow;
+  const sharedPage = ['settings', 'about', 'members'].includes(currentPage());
+  $('#pageEyebrow').textContent = sharedPage ? eyebrow : '当前档案 · ' + activeMemberName();
   $('#pageTitle').textContent = title;
   $('#pageSub').textContent = sub;
   $('#pageActions').innerHTML = (withSearch ? `<button class="icon-btn" data-act="search" aria-label="搜索档案">${I.search}</button>` : '') + (actions || '');
@@ -123,7 +132,7 @@ function issueDetail(i) {
       </div>
       <div class="divider"></div>
       <div>
-        <p class="block-label">证据与不确定性　EVIDENCE</p>
+        <p class="block-label">证据与不确定性</p>
         ${i.evidence.map(e => `
           <div class="evidence">
             <span class="tag ${e.type === '医院报告' ? 'report' : e.type === '本人描述' ? 'self' : e.type === '建议计划' ? 'plan' : 'analysis'}">${esc(e.type)}</span>
@@ -134,12 +143,12 @@ function issueDetail(i) {
       ${i.userNote ? `<div class="need-box" style="background:#F1ECE0"><b>我的备注</b><p>${esc(i.userNote)}</p></div>` : ''}
       ${i.files.length ? `
       <div>
-        <p class="block-label">关联资料　FILES</p>
+        <p class="block-label">关联资料</p>
         ${i.files.map(f => `<a class="file-row" href="${esc(f.href)}">${I.file}<span>${esc(f.name)}</span><span class="fm">${esc(f.meta)}</span></a>`).join('')}
       </div>` : ''}
       ${i.timeline.length ? `
       <div>
-        <p class="block-label">近期检查　TIMELINE</p>
+        <p class="block-label">近期检查</p>
         ${i.timeline.map(t => `<div class="tl-row"><time>${esc(t.date)}</time><p>${esc(t.text)}</p></div>`).join('')}
       </div>` : ''}
       <div class="detail-actions">
@@ -190,7 +199,7 @@ function renderLabs() {
        <button data-act="range" data-v="1y" class="${ui.labsRange === '1y' ? 'on' : ''}">近 1 年</button>
      </div>
      <div class="btn-row">
-       <button class="btn btn-ghost" data-act="go" data-to="labs-all">${I.file}全部记录</button>
+       <a class="btn btn-ghost" href="#/metrics">${I.trend}按指标汇总</a><button class="btn btn-ghost" data-act="go" data-to="labs-all">${I.file}全部记录</button>
        <button class="btn btn-ghost" data-act="import">${I.upload}导入报告</button>
        <button class="btn btn-primary" data-act="newlab">${I.plus}录入结果</button>
      </div>`);
@@ -544,7 +553,7 @@ function paintLabAll() {
   const rowHTML = r => {
     const rep = r.reportId ? reportById(r.reportId) : null;
     return `<tr>
-          <td class="name-cell">${esc(r.name)}<span class="cat-tag"> ${esc(r.category)}</span></td>
+          <td class="name-cell"><a class="metric-inline-link" href="${esc(labMetricHref(r))}" title="查看该指标历史变化">${esc(r.name)}</a><span class="cat-tag"> ${esc(r.category)}</span></td>
           <td class="num${isAbnormal(r) ? ' over' : ''}">${labValueText(r)}<span class="lab-unit">${esc(r.unit)}</span></td>
           <td class="ref col-ref">${esc(labRange(r))}</td>
           <td class="flag">${labFlagCell(r)}</td>
