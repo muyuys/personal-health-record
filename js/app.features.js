@@ -3,6 +3,7 @@ let memberList = [];
 let aiBusy = false;
 let aiSelectedModel = '';
 let aiModelPickerClose = null;
+let aiArchiveClose = null;
 
 function shortModelName(id) {
   return String(id || '选择模型').split('/').pop().replace(/^glm-/i, 'GLM ').replace(/^gpt-/i, 'GPT ').replace(/^deepseek-/i, 'DeepSeek ').replace(/-flash$/i, ' Flash');
@@ -77,6 +78,7 @@ function bindModelPicker(initialCatalog) {
   };
   const open = () => {
     if (trigger.disabled) return;
+    aiArchiveClose?.();
     search.value = '';
     menu.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
@@ -154,7 +156,7 @@ async function initMembers() {
   } catch (error) { toast(error.message); }
 }
 
-async function switchMember(target) {
+async function switchMember(target, options = {}) {
   if (target === MEMBER_ID) return;
   if (!memberList.some(member => member.id === target)) { toast('成员不存在，请刷新后重试'); return; }
   if ((visitComposer || reportComposer) && (composerDirty() || reportDirty())) {
@@ -164,9 +166,118 @@ async function switchMember(target) {
   await Promise.allSettled([...memberWrites]);
   if (syncBad) { toast('有记录尚未保存，请处理存储错误后再切换'); return; }
   const url = new URL(location.href);
-  url.searchParams.set('member', target);
-  url.hash = '#/home';
+  if (target === 'default') url.searchParams.delete('member');
+  else url.searchParams.set('member', target);
+  // stay：留在当前路由（问答页切换档案后还要接着问）；其余入口回到首页
+  url.hash = options.stay ? (location.hash || '#/home') : '#/home';
   location.assign(url.href);
+}
+
+/* 问答只作用于一个档案：切换＝整页重载（连同数据库），
+   不做前端局部替换，避免两个档案的记录出现在同一屏。 */
+function archivePickerHTML() {
+  const name = activeMemberName();
+  return `<div class="ai-archive"><button id="aiArchiveButton" class="ai-archive-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="aiArchiveMenu" aria-label="切换健康档案，当前 ${esc(name)}" title="切换健康档案"><span class="ai-archive-avatar" aria-hidden="true">${esc(Array.from(name)[0] || '档')}</span><span class="ai-archive-name">${esc(name)}</span><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5"/></svg></button><div id="aiArchiveMenu" class="ai-archive-menu" role="dialog" aria-label="切换健康档案" hidden></div></div>`;
+}
+
+function bindArchivePicker() {
+  aiArchiveClose?.();
+  const trigger = $('#aiArchiveButton'), menu = $('#aiArchiveMenu');
+  if (!trigger || !menu) return;
+  let adding = false, saving = false, controller;
+  const close = (restoreFocus = false) => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    controller?.abort();
+    controller = undefined;
+    aiArchiveClose = () => {};
+    if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
+  };
+  /* 触发器在页面底部，弹层一律向上；空间不够时才压回视口内 */
+  const position = () => {
+    if (menu.hidden) return;
+    const viewport = window.visualViewport;
+    const x = viewport?.offsetLeft || 0, y = viewport?.offsetTop || 0;
+    const width = viewport?.width || innerWidth, height = viewport?.height || innerHeight;
+    const rect = trigger.getBoundingClientRect(), gap = 8, edge = 12;
+    menu.style.width = Math.min(330, width - edge * 2) + 'px';
+    menu.style.maxHeight = Math.min(460, height - edge * 2) + 'px';
+    const box = menu.getBoundingClientRect();
+    menu.style.left = Math.max(x + edge, Math.min(rect.left, x + width - box.width - edge)) + 'px';
+    menu.style.top = Math.max(y + edge, Math.min(rect.top - gap - box.height, y + height - box.height - edge)) + 'px';
+  };
+  const paint = (focus = false) => {
+    menu.innerHTML = adding
+      ? `<div class="ai-archive-form" id="archiveForm"><p class="ai-archive-form-title">新增档案</p><label>称呼<input name="name" required maxlength="60" placeholder="如：父亲" autocomplete="off"></label><label>与我的关系<input name="relation" maxlength="40" placeholder="如：本人、父亲" autocomplete="off"></label><p class="ai-archive-hint">新档案空白开始，记录与问答都不与现有档案共享。</p><div class="ai-archive-form-foot"><button type="button" class="btn btn-mini" data-archive-back>返回</button><button type="button" class="btn btn-mini btn-primary" data-archive-create>创建</button></div></div>`
+      : `<p class="ai-archive-hint">每个档案各自独立：提问只读这一个档案的记录，不与其他档案混在一起。</p><ul class="ai-archive-list" aria-label="健康档案">${memberList.map(member => `<li><button type="button" class="ai-archive-member" data-archive-switch="${esc(member.id)}" data-archive-name="${esc(member.name)}" ${member.id === MEMBER_ID ? 'aria-current="true"' : ''}><span class="ai-archive-avatar" aria-hidden="true">${esc(Array.from(member.name)[0] || '档')}</span><span class="ai-archive-member-text"><b>${esc(member.name)}</b><small>${esc(member.relation || '关系未填写')}${member.id === MEMBER_ID ? ' · 当前' : ''}</small></span>${member.id === MEMBER_ID ? `<span class="ai-archive-check" aria-hidden="true">${I.check2}</span>` : ''}</button></li>`).join('')}</ul><div class="ai-archive-foot"><button type="button" class="ai-archive-action" data-archive-add>${I.plus}新增档案</button><a class="ai-archive-action" href="#/members" data-archive-manage>${I.user}管理成员</a></div>`;
+    position();
+    if (focus) (adding ? menu.querySelector('input') : menu.querySelector('[aria-current="true"]') || menu.querySelector('button'))?.focus({ preventScroll: true });
+  };
+  /* 弹层在 #aiForm 内部，不能再用 <form>（嵌套表单会被浏览器丢弃），改用按钮触发 */
+  const createArchive = async () => {
+    if (saving) return;
+    const nameInput = menu.querySelector('#archiveForm input[name=name]');
+    const values = {
+      name: (nameInput?.value || '').trim(),
+      relation: (menu.querySelector('#archiveForm input[name=relation]')?.value || '').trim()
+    };
+    if (!values.name) { $('#aiArchiveStatus').textContent = '请填写成员称呼'; nameInput?.focus(); return; }
+    saving = true;
+    menu.querySelectorAll('button').forEach(button => { button.disabled = true; });
+    $('#aiArchiveStatus').textContent = '正在创建档案…';
+    try {
+      await featureAPI('/profiles', values);
+      await initMembers();
+      if (!trigger.isConnected) return;
+      adding = false;
+      paint(false);
+      $('#aiArchiveStatus').textContent = '档案已创建，选择它即可切换';
+    } catch (error) {
+      if (trigger.isConnected) {
+        $('#aiArchiveStatus').textContent = error.message;
+        menu.querySelectorAll('button').forEach(button => { button.disabled = false; });
+      }
+    } finally { saving = false; }
+  };
+  const open = () => {
+    if (!menu.hidden) { close(true); return; }
+    aiModelPickerClose?.();
+    controller = new AbortController();
+    const options = { signal: controller.signal };
+    aiArchiveClose = () => close();
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    paint(true);
+    menu.addEventListener('click', async e => {
+      if (e.target.closest('[data-archive-add]')) { adding = true; paint(true); return; }
+      if (e.target.closest('[data-archive-back]') && !saving) { adding = false; paint(true); return; }
+      if (e.target.closest('[data-archive-create]')) { createArchive(); return; }
+      if (e.target.closest('[data-archive-manage]')) { close(); return; }
+      const button = e.target.closest('[data-archive-switch]');
+      if (!button || button.disabled) return;
+      const target = button.dataset.archiveSwitch;
+      if (target === MEMBER_ID) { close(true); return; }
+      const draft = $('#aiQuestion')?.value.trim();
+      if (draft && !confirm(`「${button.dataset.archiveName}」是另一个独立档案。切换会离开当前对话，输入框里未发送的问题不会保留。继续？`)) return;
+      button.disabled = true;
+      $('#aiArchiveStatus').textContent = `正在切换到「${button.dataset.archiveName}」…`;
+      try { await switchMember(target, { stay: true }); }
+      catch (error) { if (trigger.isConnected) { button.disabled = false; $('#aiArchiveStatus').textContent = error.message; } }
+    }, options);
+    menu.addEventListener('submit', e => e.preventDefault(), options);
+    menu.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); }
+      else if (e.key === 'Enter' && e.target.closest('#archiveForm') && e.target.tagName === 'INPUT') {
+        e.preventDefault();
+        createArchive();
+      }
+    }, options);
+    document.addEventListener('pointerdown', e => { if (!menu.contains(e.target) && !trigger.contains(e.target)) close(); }, options);
+    window.addEventListener('resize', position, options);
+    document.addEventListener('scroll', position, { ...options, capture: true });
+    window.visualViewport?.addEventListener('resize', position, options);
+  };
+  trigger.addEventListener('click', open);
 }
 
 async function renderMembers() {
@@ -317,14 +428,86 @@ async function renderSettings() {
 
 function renderAbout() { goHash('#/settings?section=about'); }
 
-function sourceHTML(source) {
-  const targets = { labs: 'labs-all', reports: 'records?t=report', visits: 'records?t=visit', medications: 'records?t=med',
-    vitals: 'daily?seg=vitals', symptoms: 'daily?seg=symptoms', weights: 'daily?seg=body', profile: 'me',
-    allergies: 'me', familyHistory: 'me', surgeries: 'me', todoItems: 'todos' };
-  return `<details class="ai-source"><summary>[${esc(source.ref)}] ${esc(source.date || '')} · ${esc(source.label)}${source.imageProvided ? ' · 已提供图片' : ''}</summary><pre>${esc(JSON.stringify(source.record, null, 2))}</pre>${source.kind === 'document' ? '' : `<a href="#/${targets[source.kind] || 'daily'}">查看对应记录</a>`}</details>`;
+const AI_SOURCE_TARGETS = { labs: 'labs-all', reports: 'records?t=report', visits: 'records?t=visit', medications: 'records?t=med',
+  vitals: 'daily?seg=vitals', symptoms: 'daily?seg=symptoms', weights: 'daily?seg=body', profile: 'me',
+  allergies: 'me', familyHistory: 'me', surgeries: 'me', todoItems: 'todos' };
+const AI_SOURCE_KINDS = { labs: '检验', reports: '报告', visits: '就诊', medications: '用药', allergies: '过敏',
+  familyHistory: '家族史', surgeries: '手术', vitals: '体征', symptoms: '症状', weights: '体重', body: '围度',
+  sleepLogs: '睡眠', dietDays: '饮食', dietWeeks: '饮食周记', todoItems: '待办', profile: '个人资料', document: '文档' };
+const AI_FIELD_LABELS = { date: '日期', value: '数值', unit: '单位', low: '下限', high: '上限', category: '类别',
+  name: '项目', title: '标题', panel: '组套', specimen: '标本', hospital: '机构', kg: '体重', bmi: 'BMI',
+  part: '部位', score: '分级', waist: '腰围', chest: '胸围', hip: '臀围', dose: '剂量', freq: '频次',
+  relation: '关系', note: '备注', status: '状态', weekStart: '周起', startDate: '起始', text: '内容', summary: '小结' };
+const AI_FIELD_ORDER = { labs: ['value', 'unit', 'low', 'high', 'category'], vitals: ['value', 'unit', 'low', 'high'],
+  reports: ['panel', 'specimen', 'hospital'], weights: ['kg', 'bmi'], body: ['waist', 'chest', 'hip'],
+  medications: ['dose', 'freq'], visits: ['hospital', 'department'], symptoms: ['part', 'score'], todoItems: ['due'] };
+function sourceFields(source) {
+  const record = source.record;
+  if (!record || typeof record !== 'object') return '';
+  const order = AI_FIELD_ORDER[source.kind] || [];
+  const keys = [...order.filter(k => k in record), ...Object.keys(record).filter(k => !order.includes(k))];
+  const pairs = [];
+  for (const key of keys) {
+    const value = record[key];
+    if (key === 'id' || value === null || value === '' || typeof value === 'object') continue;
+    const text = String(value);
+    pairs.push([AI_FIELD_LABELS[key] || key, text.length > 48 ? text.slice(0, 48) + '…' : text]);
+    if (pairs.length >= 4) break;
+  }
+  // 数值与单位、下限与上限各自合成一格，比「数值 2.3 · 单位 ng/L · 下限 0」省一半字
+  const out = [];
+  const take = label => { const i = pairs.findIndex(p => p[0] === label); return i < 0 ? null : pairs.splice(i, 1)[0][1]; };
+  const value = take('数值'), unit = take('单位'), low = take('下限'), high = take('上限');
+  if (value !== null) out.push(`<span><i>数值</i>${esc(value)}${unit ? ' ' + esc(unit) : ''}</span>`);
+  else if (unit) out.push(`<span><i>单位</i>${esc(unit)}</span>`);
+  if (low !== null || high !== null) out.push(`<span><i>参考</i>${esc(low ?? '—')}–${esc(high ?? '—')}</span>`);
+  pairs.forEach(([label, text]) => out.push(`<span><i>${esc(label)}</i>${esc(text)}</span>`));
+  return out.slice(0, 5).join('');
 }
-function chatHTML(message) {
-  return `<article class="ai-message"><p class="ai-question">${esc(message.question)}</p>${message.model ? `<p class="ai-model-used">回答模型 · ${esc(shortModelName(message.model))}</p>` : ''}<div class="ai-answer">${esc(message.answer)}</div><details class="ai-evidence"><summary>本次检索来源 · ${message.sources.length} 条</summary>${message.sources.map(sourceHTML).join('')}</details></article>`;
+function sourceHTML(source) {
+  const kind = AI_SOURCE_KINDS[source.kind] || source.kind || '记录';
+  const fields = sourceFields(source);
+  const link = source.kind === 'document' ? '' : `<a href="#/${AI_SOURCE_TARGETS[source.kind] || 'daily'}">查看对应记录</a>`;
+  const meta = [source.imageProvided ? '已提供图片' : '', link].filter(Boolean).join('');
+  return `<li class="ai-source"><div class="ai-source-head"><span class="ai-source-ref">${esc(source.ref)}</span><span class="ai-source-title">${esc([source.date, source.label].filter(Boolean).join(' · ') || '未标注日期')}</span><span class="ai-source-kind">${esc(kind)}</span></div>${fields ? `<p class="ai-source-fields">${fields}</p>` : ''}${meta ? `<p class="ai-source-meta">${meta}</p>` : ''}<details class="ai-source-raw"><summary>原始字段</summary><pre>${esc(JSON.stringify(source.record, null, 2))}</pre></details></li>`;
+}
+/* 对话样式：提问靠右气泡，回答纯文本排在页面底色上，顶部一行小字、底部一行操作 */
+const AI_COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.6" y="5.6" width="7.4" height="7.4" rx="1.7" stroke="currentColor" stroke-width="1.3"/><path d="M10.4 5.6V4.2c0-.9-.7-1.7-1.7-1.7H4.2c-.9 0-1.7.7-1.7 1.7v4.5c0 .9.8 1.7 1.7 1.7h1.4" stroke="currentColor" stroke-width="1.3"/></svg>';
+const aiPad = n => String(n).padStart(2, '0');
+function aiClock(at) {
+  const d = new Date(Number(at) || Date.now());
+  return `${aiPad(d.getHours())}:${aiPad(d.getMinutes())}`;
+}
+function aiDay(at) {
+  const d = new Date(Number(at) || Date.now());
+  const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 86400000);
+  if (diff === 0) return '今天';
+  if (diff === 1) return '昨天';
+  const md = `${d.getMonth() + 1}月${d.getDate()}日`;
+  return d.getFullYear() === new Date().getFullYear() ? md : `${d.getFullYear()}年${md}`;
+}
+function aiElapsed(ms) {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+function chatHTML(message, elapsed) {
+  const answer = window.MD ? MD.render(message.answer) : `<p>${esc(message.answer)}</p>`;
+  const sources = message.sources || [];
+  const meta = [message.model ? shortModelName(message.model) : '', elapsed ? `用时 ${aiElapsed(elapsed)}` : ''].filter(Boolean).join(' · ');
+  return `<article class="ai-message" data-day="${aiDay(message.createdAt)}"><div class="ai-turn-user"><p class="ai-bubble">${esc(message.question)}</p></div><div class="ai-turn-ai">${meta ? `<p class="ai-turn-meta">${esc(meta)}</p>` : ''}<div class="ai-answer">${answer}</div>${sources.length ? `<details class="ai-evidence"><summary><span>检索来源 · ${sources.length} 条</span>${I.chevron}</summary><ol class="ai-source-list">${sources.map(sourceHTML).join('')}</ol></details>` : `<p class="ai-evidence-empty">本次未检索到可引用的记录。</p>`}<div class="ai-turn-foot"><button class="ai-act" type="button" data-copy="${esc(message.answer)}">${AI_COPY_ICON}复制</button><time>${aiClock(message.createdAt)}</time></div></div></article>`;
+}
+function pendingHTML(question) {
+  return `<article class="ai-message is-pending" id="aiPending" data-day="${aiDay(Date.now())}"><div class="ai-turn-user"><p class="ai-bubble">${esc(question)}</p></div><div class="ai-turn-ai"><p class="ai-typing" role="status"><i></i><i></i><i></i><span>正在检索记录并整理</span></p></div></article>`;
+}
+/* 日期分隔只在跨天时插一条，避免每条消息都顶着日期 */
+function aiDayDivider(at) {
+  return `<p class="ai-day"><span>${aiDay(at)}</span></p>`;
+}
+function appendTurn(html, at) {
+  const list = $('#aiMessages');
+  if (list.lastElementChild?.dataset.day !== aiDay(at)) list.insertAdjacentHTML('beforeend', aiDayDivider(at));
+  list.insertAdjacentHTML('beforeend', html);
 }
 async function renderAssistant() {
   setHead('当前档案 · ' + activeMemberName(), 'AI 健康问答', '结合已保存的健康记录整理信息，回答可核对来源。', '<a class="btn" href="#/settings?section=models">连接设置</a>', false);
@@ -334,15 +517,25 @@ async function renderAssistant() {
     if (currentPage() !== 'assistant') return;
     let catalog = initialCatalog;
     if (!catalog.models.some(m => m.id === aiSelectedModel)) aiSelectedModel = status.model;
-    $('#view').innerHTML = `<div class="ai-layout"><section class="ai-conversation" aria-label="健康问答"><div id="aiMessages">${history.messages.length ? history.messages.map(chatHTML).join('') : '<div class="ai-empty"><h2>从一条健康记录开始</h2><p>可以问：最近有哪些检验结果需要核对？<br>也可以问：帮我整理下次复诊需要带的资料。</p><p>每次问题独立回答，请在问题中写清日期、指标或报告名称。</p></div>'}</div>
-      <form id="aiForm"><label for="aiQuestion">向 ${esc(activeMemberName())} 的档案提问</label><textarea id="aiQuestion" name="question" required maxlength="4000" rows="3" placeholder="例如：整理最近的检查记录，并注明来源" ${!status.configured ? 'disabled' : ''}></textarea><div class="ai-send">${compactModelPicker(status, catalog)}<button class="btn btn-primary" type="submit" ${!status.configured || aiBusy ? 'disabled' : ''}>${aiBusy ? '正在整理…' : '提问'}</button></div><p id="aiStatus" class="ai-compose-status" role="status">${status.configured ? '' : '请先在连接设置中配置模型'}</p><p id="aiModelNotice" class="ai-compose-status" role="status" ${catalog.error ? '' : 'hidden'}>${esc(catalog.error)}</p><p class="ai-model-routing">${esc(status.dataNotice)}</p></form></section>
-      <details class="ai-notes" ${window.matchMedia('(min-width:761px)').matches ? 'open' : ''}><summary><h2>依据与范围</h2>${I.chevron}</summary><div><p>仅使用当前成员的资料。记录为空表示未记录，不能当作没有症状或疾病。</p><p>来源包括检验、报告文字、就诊、用药及日常记录；最多附加 3 张相关报告图片，每张最多 4 MB。每类最多检索 16 条，总长度有限。</p><p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p></div></details></div>`;
+    const suggestions = ['这个档案里有哪些数据？', '最近有哪些检验结果需要核对？', '帮我整理下次复诊需要带的资料。'];
+    let lastDay = '';
+    const historyHTML = history.messages.length ? history.messages.map(message => {
+      const day = aiDay(message.createdAt);
+      const head = day === lastDay ? '' : aiDayDivider(message.createdAt);
+      lastDay = day;
+      return head + chatHTML(message);
+    }).join('') : `<div class="ai-empty"><h2>从一条健康记录开始</h2><p>问题里带上日期、指标或报告名称，回答会更准。</p><div class="ai-suggest">${suggestions.map(text => `<button class="ai-suggest-item" type="button" data-ai-suggest="${esc(text)}">${esc(text)}</button>`).join('')}</div></div>`;
+    // 输入区放在 .ai-layout 之外、.ai-page 之内：粘在视口底部，滚到对话末尾再落回文档流
+    $('#view').innerHTML = `<div class="ai-page"><div class="ai-layout"><section class="ai-conversation" aria-label="健康问答"><div id="aiMessages">${historyHTML}</div></section>
+      <details class="ai-notes" ${window.matchMedia('(min-width:761px)').matches ? 'open' : ''}><summary><h2>依据与范围</h2>${I.chevron}</summary><div><p>只使用「${esc(activeMemberName())}」这一个档案的资料；其它档案的记录、报告和问答各自独立，不会互相检索。</p><p>记录为空表示当前档案未记录，不能当作没有症状或疾病。</p><p>来源包括检验、报告文字、就诊、用药及日常记录；每类最多检索 16 条，总长度有限。</p><p>${esc(status.dataNotice)}</p><p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p></div></details></div>
+      <div class="ai-composer"><form id="aiForm"><label class="ai-compose-label" for="aiQuestion">向当前档案提问</label><textarea id="aiQuestion" name="question" required maxlength="4000" rows="3" placeholder="例如：整理最近的检查记录，并注明来源" ${!status.configured ? 'disabled' : ''}></textarea><div class="ai-send"><div class="ai-send-left">${archivePickerHTML()}${compactModelPicker(status, catalog)}</div><button class="btn btn-primary" type="submit" ${!status.configured || aiBusy ? 'disabled' : ''}>${aiBusy ? '正在整理…' : '提问'}</button></div><p id="aiStatus" class="ai-compose-status" role="status">${status.configured ? '' : '请先在连接设置中配置模型'}</p><p id="aiModelNotice" class="ai-compose-status" role="status" ${catalog.error ? '' : 'hidden'}>${esc(catalog.error)}</p><p id="aiArchiveStatus" class="ai-archive-status" role="status"></p></form></div></div>`;
     $('#aiModel').addEventListener('change', e => {
       aiSelectedModel = e.target.value;
       $('#aiModelShort').textContent = shortModelName(aiSelectedModel);
       $('#aiStatus').textContent = '';
     });
     const modelPicker = bindModelPicker(catalog);
+    bindArchivePicker();
     $('#aiModelRefresh').addEventListener('click', async e => {
       const button = e.currentTarget;
       button.disabled = true;
@@ -360,6 +553,40 @@ async function renderAssistant() {
       } catch (error) { if (currentPage() === 'assistant') $('#aiModelNotice').textContent = error.message; }
       finally { button.disabled = false; }
     });
+    /* 示例问题直接填进输入框，比让人照着抄一遍省事 */
+    $$('[data-ai-suggest]').forEach(button => button.addEventListener('click', () => {
+      const box = $('#aiQuestion');
+      if (!box || box.disabled) return;
+      box.value = button.dataset.aiSuggest;
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    }));
+    /* 复制回答原文（不是渲染后的文本，保留 Markdown 结构） */
+    $('#aiMessages').addEventListener('click', async e => {
+      const button = e.target.closest('[data-copy]');
+      if (!button) return;
+      const text = button.dataset.copy || '';
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        else {
+          const box = document.createElement('textarea');
+          box.value = text;
+          box.setAttribute('readonly', '');
+          box.style.cssText = 'position:fixed;left:-9999px;top:0';
+          document.body.append(box);
+          box.select();
+          document.execCommand('copy');
+          box.remove();
+        }
+        button.dataset.copied = '1';
+        button.lastChild.textContent = '已复制';
+        setTimeout(() => {
+          if (!button.isConnected) return;
+          delete button.dataset.copied;
+          button.lastChild.textContent = '复制';
+        }, 1600);
+      } catch { $('#aiStatus').textContent = '复制失败，可手动选中回答内容'; }
+    });
     $('#aiForm').addEventListener('submit', async e => {
       e.preventDefault();
       if (aiBusy) return;
@@ -371,16 +598,28 @@ async function renderAssistant() {
       modelPicker.disable(true);
       $('#aiModelRefresh').disabled = true;
       button.textContent = '正在整理…';
-      $('#aiStatus').textContent = '正在检索当前成员记录并等待模型回答…';
+      $('#aiStatus').textContent = '';
+      $('.ai-empty')?.remove();
+      appendTurn(pendingHTML(question), Date.now());
+      $('#aiQuestion').value = '';
+      $('#aiPending')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const startedAt = Date.now();
       try {
         const result = await featureAPI('/ai/chat', { question, model: aiSelectedModel });
         if (currentPage() !== 'assistant') return;
-        $('.ai-empty')?.remove();
-        $('#aiMessages').insertAdjacentHTML('beforeend', chatHTML(result));
-        $('#aiQuestion').value = '';
-        $('#aiStatus').textContent = '回答已保存，可展开来源核对';
-      } catch (error) { if (currentPage() === 'assistant') $('#aiStatus').textContent = error.message; }
-      finally {
+        const html = chatHTML(result, Date.now() - startedAt);
+        const pending = $('#aiPending');
+        if (pending) { pending.insertAdjacentHTML('beforebegin', html); pending.remove(); }
+        else appendTurn(html, result.createdAt || Date.now());
+        // 从回答开头读起，而不是停在末尾；滚动位置要扣除固定在底部的输入区
+        $('#aiMessages').lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        $('#aiStatus').textContent = '回答已保存';
+      } catch (error) {
+        $('#aiPending')?.remove();
+        if (currentPage() !== 'assistant') return;
+        $('#aiStatus').textContent = error.message;
+        $('#aiQuestion').value = question;   // 提问内容留在输入框里，方便改一处再试
+      } finally {
         aiBusy = false;
         button.disabled = false;
         button.textContent = '提问';
