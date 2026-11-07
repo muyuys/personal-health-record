@@ -381,6 +381,17 @@ def history():
                      createdAt=r['created_at'], model=r['model']) for r in c.execute('SELECT * FROM ai_chat ORDER BY created_at DESC LIMIT 30')][::-1]
 
 
+def reset_history():
+    """清空当前成员的问答记录。
+
+    作用域跟着 X-Health-Profile 走（每个成员一个库），不会碰到别的档案。
+    只删存下来的问答，不动检验、报告、就诊等记录。
+    """
+    with h.connect() as c:
+        removed = c.execute('DELETE FROM ai_chat').rowcount
+    return {'ok': True, 'removed': max(int(removed or 0), 0)}
+
+
 KINDS = {'labs': 'replace_labs', 'reports': 'replace_reports', 'vitals': 'replace_vitals',
          'symptoms': 'replace_symptoms', 'dietDays': 'replace_diet_days', 'dietWeeks': 'replace_diet_weeks',
          'sleepLogs': 'replace_sleep_logs', 'todoItems': 'replace_todo_items'}
@@ -539,6 +550,12 @@ def install(server):
                         return
                     if path.path == '/api/ai/history' and method == 'GET':
                         self._json({'messages': history()})
+                        return
+                    if path.path == '/api/ai/reset' and method == 'POST':
+                        # 请求体没有字段，但要读掉：keep-alive 下留着未读的 body，
+                        # 下一次请求会把残余字节当成请求行，直接 501。
+                        self._body()
+                        self._json(reset_history())
                         return
                     if path.path == '/api/ai/chat' and method == 'POST':
                         self._json(chat(self._json_body()))

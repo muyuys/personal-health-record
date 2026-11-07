@@ -491,6 +491,19 @@ function aiElapsed(ms) {
   const s = Math.max(1, Math.round(ms / 1000));
   return s < 60 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
 }
+/* 斜杠指令只认「整条输入就是一个 /xxx」，避免正文里提到 /reset 被当成命令执行 */
+const AI_COMMANDS = { reset: 'reset', clear: 'reset', '清空': 'reset' };
+const AI_SUGGESTIONS = ['这个档案里有哪些数据？', '最近有哪些检验结果需要核对？', '帮我整理下次复诊需要带的资料。'];
+function aiCommand(text) {
+  const match = /^\/\s*([A-Za-z\u4e00-\u9fa5]+)\s*$/.exec(String(text || '').trim());
+  return match ? AI_COMMANDS[match[1].toLowerCase()] || '' : '';
+}
+function aiEmptyHTML() {
+  return `<div class="ai-empty"><h2>从一条健康记录开始</h2><p>问题里带上日期、指标或报告名称，回答会更准。</p><div class="ai-suggest">${AI_SUGGESTIONS.map(text => `<button class="ai-suggest-item" type="button" data-ai-suggest="${esc(text)}">${esc(text)}</button>`).join('')}</div><p class="ai-empty-hint">对话变长后输入 <code>/reset</code>，可清空这个档案已保存的问答记录。</p></div>`;
+}
+function aiNoticeHTML(text) {
+  return `<p class="ai-notice" role="status"><span>${esc(text)}</span></p>`;
+}
 function chatHTML(message, elapsed) {
   const answer = window.MD ? MD.render(message.answer) : `<p>${esc(message.answer)}</p>`;
   const sources = message.sources || [];
@@ -517,18 +530,17 @@ async function renderAssistant() {
     if (currentPage() !== 'assistant') return;
     let catalog = initialCatalog;
     if (!catalog.models.some(m => m.id === aiSelectedModel)) aiSelectedModel = status.model;
-    const suggestions = ['这个档案里有哪些数据？', '最近有哪些检验结果需要核对？', '帮我整理下次复诊需要带的资料。'];
     let lastDay = '';
     const historyHTML = history.messages.length ? history.messages.map(message => {
       const day = aiDay(message.createdAt);
       const head = day === lastDay ? '' : aiDayDivider(message.createdAt);
       lastDay = day;
       return head + chatHTML(message);
-    }).join('') : `<div class="ai-empty"><h2>从一条健康记录开始</h2><p>问题里带上日期、指标或报告名称，回答会更准。</p><div class="ai-suggest">${suggestions.map(text => `<button class="ai-suggest-item" type="button" data-ai-suggest="${esc(text)}">${esc(text)}</button>`).join('')}</div></div>`;
+    }).join('') : aiEmptyHTML();
     // 输入区放在 .ai-layout 之外、.ai-page 之内：粘在视口底部，滚到对话末尾再落回文档流
     $('#view').innerHTML = `<div class="ai-page"><div class="ai-layout"><section class="ai-conversation" aria-label="健康问答"><div id="aiMessages">${historyHTML}</div></section>
-      <details class="ai-notes" ${window.matchMedia('(min-width:761px)').matches ? 'open' : ''}><summary><h2>依据与范围</h2>${I.chevron}</summary><div><p>只使用「${esc(activeMemberName())}」这一个档案的资料；其它档案的记录、报告和问答各自独立，不会互相检索。</p><p>记录为空表示当前档案未记录，不能当作没有症状或疾病。</p><p>来源包括检验、报告文字、就诊、用药及日常记录；每类最多检索 16 条，总长度有限。</p><p>${esc(status.dataNotice)}</p><p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p></div></details></div>
-      <div class="ai-composer"><form id="aiForm"><label class="ai-compose-label" for="aiQuestion">向当前档案提问</label><textarea id="aiQuestion" name="question" required maxlength="4000" rows="3" placeholder="例如：整理最近的检查记录，并注明来源" ${!status.configured ? 'disabled' : ''}></textarea><div class="ai-send"><div class="ai-send-left">${archivePickerHTML()}${compactModelPicker(status, catalog)}</div><button class="btn btn-primary" type="submit" ${!status.configured || aiBusy ? 'disabled' : ''}>${aiBusy ? '正在整理…' : '提问'}</button></div><p id="aiStatus" class="ai-compose-status" role="status">${status.configured ? '' : '请先在连接设置中配置模型'}</p><p id="aiModelNotice" class="ai-compose-status" role="status" ${catalog.error ? '' : 'hidden'}>${esc(catalog.error)}</p><p id="aiArchiveStatus" class="ai-archive-status" role="status"></p></form></div></div>`;
+      <details class="ai-notes" ${window.matchMedia('(min-width:761px)').matches ? 'open' : ''}><summary><h2>依据与范围</h2>${I.chevron}</summary><div><p>只使用「${esc(activeMemberName())}」这一个档案的资料；其它档案的记录、报告和问答各自独立，不会互相检索。</p><p>记录为空表示当前档案未记录，不能当作没有症状或疾病。</p><p>来源包括检验、报告文字、就诊、用药及日常记录；每类最多检索 16 条，总长度有限。</p><p>问答记录只保存在本机这个档案里；想清空时在输入框输入 <code>/reset</code> 并回车，检验、报告等记录不受影响。</p><p>${esc(status.dataNotice)}</p><p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p></div></details></div>
+      <div class="ai-composer"><form id="aiForm"><label class="ai-compose-label" for="aiQuestion">向当前档案提问</label><textarea id="aiQuestion" name="question" required maxlength="4000" rows="3" placeholder="例如：整理最近的检查记录，并注明来源"></textarea><div class="ai-send"><div class="ai-send-left">${archivePickerHTML()}${compactModelPicker(status, catalog)}</div><button class="btn btn-primary" type="submit" ${!status.configured || aiBusy ? 'disabled' : ''}>${aiBusy ? '正在整理…' : '提问'}</button></div><p id="aiStatus" class="ai-compose-status" role="status">${status.configured ? '' : '请先在连接设置中配置模型'}</p><p id="aiModelNotice" class="ai-compose-status" role="status" ${catalog.error ? '' : 'hidden'}>${esc(catalog.error)}</p><p id="aiArchiveStatus" class="ai-archive-status" role="status"></p></form></div></div>`;
     $('#aiModel').addEventListener('change', e => {
       aiSelectedModel = e.target.value;
       $('#aiModelShort').textContent = shortModelName(aiSelectedModel);
@@ -553,16 +565,68 @@ async function renderAssistant() {
       } catch (error) { if (currentPage() === 'assistant') $('#aiModelNotice').textContent = error.message; }
       finally { button.disabled = false; }
     });
-    /* 示例问题直接填进输入框，比让人照着抄一遍省事 */
-    $$('[data-ai-suggest]').forEach(button => button.addEventListener('click', () => {
-      const box = $('#aiQuestion');
-      if (!box || box.disabled) return;
-      box.value = button.dataset.aiSuggest;
-      box.focus();
-      box.setSelectionRange(box.value.length, box.value.length);
-    }));
-    /* 复制回答原文（不是渲染后的文本，保留 Markdown 结构） */
+    const form = $('#aiForm'), button = form.querySelector('[type=submit]'), box = $('#aiQuestion');
+    const configured = !!status.configured;
+    /* 输入 /reset 时把按钮改成「执行」：清空历史不需要模型，没配模型也该能用 */
+    function syncComposer() {
+      if (aiBusy) return;
+      const command = aiCommand(box.value);
+      button.textContent = command ? '执行' : '提问';
+      button.disabled = !command && !configured;
+      const hint = $('#aiStatus');
+      if (command) {
+        hint.dataset.cmd = '1';
+        hint.textContent = '按 Enter 执行：清空这个档案已保存的问答记录';
+      } else if (hint.dataset.cmd) {
+        delete hint.dataset.cmd;
+        hint.textContent = '';
+      }
+    }
+    async function resetConversation() {
+      aiBusy = true;
+      button.disabled = true;
+      button.textContent = '正在清空…';
+      modelPicker.disable(true);
+      $('#aiModelRefresh').disabled = true;
+      box.value = '';
+      try {
+        const result = await featureAPI('/ai/reset', {});
+        if (currentPage() !== 'assistant' || !form.isConnected) return;
+        const removed = Number(result.removed) || 0;
+        // 只清当前成员的问答，记录与来源一并消失；检验、报告等资料不受影响
+        $('#aiMessages').innerHTML = aiNoticeHTML(removed ? `已清空 ${removed} 条问答记录` : '这个档案还没有问答记录') + aiEmptyHTML();
+        $('#aiMessages').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (error) {
+        if (currentPage() === 'assistant') $('#aiStatus').textContent = error.message;
+      } finally {
+        aiBusy = false;
+        syncComposer();   // 清空后要顺带撤掉「按 Enter 执行」那行提示
+        if (form.isConnected) {
+          modelPicker.disable(false);
+          $('#aiModelRefresh').disabled = false;
+          button.textContent = '提问';
+          button.disabled = !configured;
+        }
+      }
+    }
+    box.addEventListener('input', syncComposer);
+    /* 输入框是多行文本，Enter 默认换行；只有整条内容是指令时才让 Enter 直接执行 */
+    box.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      if (!aiCommand(box.value)) return;
+      e.preventDefault();
+      form.requestSubmit();
+    });
+    /* 复制回答原文；示例问题是清空后重插的，点击走委托 */
     $('#aiMessages').addEventListener('click', async e => {
+      const suggest = e.target.closest('[data-ai-suggest]');
+      if (suggest) {
+        box.value = suggest.dataset.aiSuggest || '';
+        box.focus();
+        box.setSelectionRange(box.value.length, box.value.length);
+        syncComposer();
+        return;
+      }
       const button = e.target.closest('[data-copy]');
       if (!button) return;
       const text = button.dataset.copy || '';
@@ -587,13 +651,14 @@ async function renderAssistant() {
         }, 1600);
       } catch { $('#aiStatus').textContent = '复制失败，可手动选中回答内容'; }
     });
-    $('#aiForm').addEventListener('submit', async e => {
+    form.addEventListener('submit', async e => {
       e.preventDefault();
       if (aiBusy) return;
-      const question = $('#aiQuestion').value.trim();
+      const question = box.value.trim();
       if (!question) return;
+      if (aiCommand(question)) { await resetConversation(); return; }
+      if (!configured) { $('#aiStatus').textContent = '请先在连接设置中配置模型'; return; }
       aiBusy = true;
-      const form = e.currentTarget, button = form.querySelector('[type=submit]');
       button.disabled = true;
       modelPicker.disable(true);
       $('#aiModelRefresh').disabled = true;
@@ -601,7 +666,7 @@ async function renderAssistant() {
       $('#aiStatus').textContent = '';
       $('.ai-empty')?.remove();
       appendTurn(pendingHTML(question), Date.now());
-      $('#aiQuestion').value = '';
+      box.value = '';
       $('#aiPending')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const startedAt = Date.now();
       try {
@@ -618,11 +683,10 @@ async function renderAssistant() {
         $('#aiPending')?.remove();
         if (currentPage() !== 'assistant') return;
         $('#aiStatus').textContent = error.message;
-        $('#aiQuestion').value = question;   // 提问内容留在输入框里，方便改一处再试
+        box.value = question;   // 提问内容留在输入框里，方便改一处再试
       } finally {
         aiBusy = false;
-        button.disabled = false;
-        button.textContent = '提问';
+        syncComposer();
         if (form.isConnected) { modelPicker.disable(false); $('#aiModelRefresh').disabled = false; }
         if (currentPage() === 'assistant' && !form.isConnected) renderAssistant();
       }

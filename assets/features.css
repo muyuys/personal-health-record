@@ -107,6 +107,12 @@ body:has(.ai-layout) .disclaimer{display:none}.feature-panel .btn{width:fit-cont
 .ai-empty{padding:8px 0 12px}
 .ai-empty h2{margin:8px 0 12px;font-size:20px}
 .ai-empty p{margin:8px 0;line-height:1.8}
+/* 斜杠指令：/reset 清空后留一条居中提示，说明哪些东西被清掉了 */
+.ai-empty p.ai-empty-hint{margin-top:14px;font-size:12px;color:var(--ink-5)}
+.ai-empty-hint code,.ai-notes code{padding:1px 5px;border-radius:4px;background:var(--bg-sunken);color:var(--ink-3);font-family:inherit;font-size:.95em}
+.ai-notice{display:flex;justify-content:center;max-width:760px;margin:6px 0 20px}
+.ai-notice span{max-width:100%;padding:5px 12px;border-radius:999px;background:var(--bg-card);border:1px solid var(--line);color:var(--ink-4);font-size:12px;line-height:1.6;text-align:center}
+.ai-compose-status[data-cmd]{color:var(--pine-600)}
 .ai-composer #aiForm:focus-within{border-color:var(--focus-ring);outline:1px solid var(--focus-ring)}
 .ai-notes>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;min-height:44px}
 .ai-notes>summary::-webkit-details-marker{display:none}
