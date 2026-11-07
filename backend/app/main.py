@@ -1,0 +1,45 @@
+# -*- coding: utf-8 -*-
+"""FastAPI 入口。
+
+设计（见 docs §4）：
+- 迁移期：只挂「就诊」逐条 CRUD，验证一条完整闭环跑通。
+- OCR / AI / 文件等能力由一个 service 适配层调用 server/health_features.py，
+  后续按需增量迁移，不重写。
+- 复用同一个 data/health.db（单机 SQLite），启动时跑一次版本化迁移。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .db import migrate
+from .routers import visits
+
+app = FastAPI(title="个人健康档案 · API（升级版）", version="0.1.0")
+
+# 允许 Vite dev server（5173）跨域调试；生产同源可关。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    migrate()
+
+
+app.include_router(visits.router)
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "service": "fastapi-upgrade"}
+
+
+# 预留：复用旧 health_features.py（OCR/AI/chat）的适配入口。
+# 迁移下一步在此挂 router: parse_image / chat 等，直接 import 旧模块函数。

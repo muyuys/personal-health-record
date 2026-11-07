@@ -30,8 +30,14 @@
 # 新前端 / 新后端的依赖与构建产物不纳 Git
 /frontend/node_modules/
 /frontend/dist/
+/frontend/*.tsbuildinfo
 /backend/.venv/
 /backend/__pycache__/
+/backend/pip-*/
+/backend/*.pem
+/backend/install*.log
+/backend/.testdb/
+/frontend/*.tsbuildinfo
 **/__pycache__/
 *.pyc
 
