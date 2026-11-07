@@ -19,11 +19,21 @@
 !/js/
 !/server/
 !/Tools/
+# 技术栈升级：新前端 / 新后端（只纳代码，不纳依赖与产物）
+!/frontend/
+!/backend/
 
 # 依赖与缓存
 /server/.venv/
 /server/__pycache__/
 /Tools/影像分析/runtime/
+# 新前端 / 新后端的依赖与构建产物不纳 Git
+/frontend/node_modules/
+/frontend/dist/
+/backend/.venv/
+/backend/__pycache__/
+**/__pycache__/
+*.pyc
 
 # 第三方工具源码（按约定不纳入）
 /Tools/cloud-dicom-downloader/
