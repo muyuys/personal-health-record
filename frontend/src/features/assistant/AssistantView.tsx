@@ -159,7 +159,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
       </div>
 
       <div className="ai-composer">
-        <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+        <form id="aiForm" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
           <label className="ai-compose-label" htmlFor="aiQuestion">向当前档案提问</label>
           {picked.length > 0 && (
             <div id="aiRefs" className="ai-refs">
@@ -180,9 +180,17 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
           )}
           <div className="ai-send">
             <div className="ai-send-left">
-              <select value={model} onChange={(e) => setModel(e.target.value)} disabled={!configured || busy} aria-label="选择对话模型">
-                {models.map((m: any) => <option key={m.id} value={m.id}>{shortModel(m.id)}</option>)}
-              </select>
+              <div className="ai-compose-tools">
+                <div className="ai-model-picker">
+                  <button type="button" className="ai-model-trigger" disabled={!configured || busy} aria-label="选择对话模型" tabIndex={-1}>
+                    <span>{shortModel(model)}</span>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" /></svg>
+                  </button>
+                  <select value={model} onChange={(e) => setModel(e.target.value)} disabled={!configured || busy} aria-label="选择对话模型">
+                    {models.map((m: any) => <option key={m.id} value={m.id}>{shortModel(m.id)}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
             <button className="btn btn-primary" type="submit" disabled={busy || (!configured && !isCommand(question))}>{busy ? '正在整理…' : isCommand(question) ? '执行' : '提问'}</button>
           </div>
