@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHead } from '../../components/head';
 import { Icon } from '../../components/icons';
 import { api } from '../../api/client';
+import { getActiveProfile, switchProfile } from '../../api/profile';
 
 declare global {
   interface Window { MD?: { render: (s: string) => string; escape: (s: string) => string } }
@@ -35,6 +36,9 @@ export function AssistantView({ go: _go }: { go: (to: string) => void }) {
   const [notice, setNotice] = useState('');
   const [picked, setPicked] = useState<{ kind: string; id: string; label: string; date: string }[]>([]);
   const [showSlash, setShowSlash] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+  const [activeId] = useState(getActiveProfile());
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,6 +54,7 @@ export function AssistantView({ go: _go }: { go: (to: string) => void }) {
         setModel((cat?.models || []).some((m: any) => m.id === st.model) ? st.model : (cat?.models?.[0]?.id || st.model));
         setRefs(rf.refs || []);
         setMessages(hist.messages || []);
+        api.ai.profiles().then((p) => setMembers(p.profiles || [])).catch(() => {});
       } catch (e: any) { setNotice(e?.message || '读取问答失败'); }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,6 +65,7 @@ export function AssistantView({ go: _go }: { go: (to: string) => void }) {
   }, [messages, busy]);
 
   const configured = !!status?.configured;
+  const activeName = (members.find((m) => m.id === activeId)?.name) || (activeId === 'default' ? '我的档案' : '成员档案');
   const isCommand = (t: string) => /^\/\s*(reset|clear|清空)\s*$/i.test(t.trim());
 
   const slashItems = useMemo(() => {
@@ -148,7 +154,7 @@ export function AssistantView({ go: _go }: { go: (to: string) => void }) {
         </section>
       </div>
 
-      <div className="ai-composer" style={{ marginLeft: 'auto', marginRight: 'auto' }}>
+      <div className="ai-composer" style={{ width: '100%', maxWidth: 760, marginLeft: 'auto', marginRight: 'auto' }}>
         <form id="aiForm" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
           <label className="ai-compose-label" htmlFor="aiQuestion">向当前档案提问</label>
           {picked.length > 0 && (
@@ -171,6 +177,48 @@ export function AssistantView({ go: _go }: { go: (to: string) => void }) {
           <div className="ai-send">
             <div className="ai-send-left">
               <div className="ai-compose-tools">
+                <div className="ai-archive" style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className="ai-archive-trigger"
+                    aria-haspopup="menu"
+                    aria-expanded={archiveOpen}
+                    aria-label={`切换健康档案，当前 ${activeName}`}
+                    title="切换健康档案"
+                    onClick={() => setArchiveOpen((v) => !v)}
+                  >
+                    <span className="ai-archive-avatar" aria-hidden="true">{Array.from(String(activeName))[0] || '档'}</span>
+                    <span className="ai-archive-name">{activeName}</span>
+                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" /></svg>
+                  </button>
+                  {archiveOpen && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 55 }} onClick={() => setArchiveOpen(false)} />
+                      <div className="ai-archive-menu" role="menu" aria-label="切换健康档案" style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)', minWidth: 220, zIndex: 60 }}>
+                        <p className="ai-archive-hint">每个档案各自独立：提问只读这一个档案的记录。</p>
+                        <ul className="ai-archive-list" aria-label="健康档案">
+                          {members.map((m) => (
+                            <li key={m.id}>
+                              <button
+                                type="button"
+                                className="ai-archive-member"
+                                onClick={() => { if (m.id !== activeId) switchProfile(m.id); else setArchiveOpen(false); }}
+                                aria-current={m.id === activeId ? 'true' : undefined}
+                              >
+                                <span className="ai-archive-avatar" aria-hidden="true">{Array.from(String(m.name || '档'))[0]}</span>
+                                <span className="ai-archive-member-text"><b>{m.name}</b><small>{m.relation || '关系未填写'}{m.id === activeId ? ' · 当前' : ''}</small></span>
+                                {m.id === activeId && <span className="ai-archive-check" aria-hidden="true"><Icon name="check" /></span>}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <div style={{ display: 'flex', gap: 4, paddingTop: 6, borderTop: '1px solid var(--line-soft)', marginTop: 6 }}>
+                          <a className="ai-archive-action" href="#/members" onClick={() => setArchiveOpen(false)}><Icon name="user" />管理成员</a>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <div className="ai-model-picker">
                   <button type="button" className="ai-model-trigger" disabled={!configured || busy} aria-label="选择对话模型" tabIndex={-1}>
                     <span>{shortModel(model)}</span>
