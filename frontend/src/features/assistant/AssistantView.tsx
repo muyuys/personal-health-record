@@ -114,7 +114,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
 
   return (
     <div className="ai-page">
-      <div className="ai-layout" style={{ gridTemplateColumns: 'minmax(0,1fr)', maxWidth: 860 }}>
+      <div className="ai-layout" style={{ display: 'block' }}>
         <section className="ai-conversation" aria-label="健康问答">
           <div id="aiMessages" ref={listRef} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {messages.length === 0 && !busy ? (
