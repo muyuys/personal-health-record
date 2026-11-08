@@ -1,184 +1,244 @@
-// 指标趋势：按「同名同单位」聚合检验结果，展示统计、SVG 折线图与逐次记录。
-// 与旧前端 concept 一致（只连接同名同单位结果，参考范围各自为准），
-// 但用轻量 SVG 自绘替代 echarts，避免额外依赖。
-import { useEffect, useMemo, useState } from 'react';
+// 指标趋势：复刻旧前端 js/app.views.metrics.js 的指标工作台。
+// 左侧指标索引（搜索 + 来源筛选），右侧统计 + ECharts 趋势 + 时间筛选 + 逐次记录分页。
+// 聚合逻辑复用旧核心 assets/metrics.js（window.HealthMetrics），保证「同名同单位」口径一致。
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHead } from '../../components/head';
+import { Icon } from '../../components/icons';
 import { useStore } from '../../store/useStore';
-import type { Lab } from '../../api/types';
+import { EChart } from '../../lib/EChart';
+import type { WindowMetricGroup, WindowMetricsRecord } from '../../lib/globals.d';
 
-interface Group {
-  key: string;
-  label: string;
-  unit: string;
-  category: string;
-  records: Lab[]; // 按日期升序
+const PAGE = 20;
+const pad = (n: number) => String(n).padStart(2, '0');
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+
+function metricNumber(v: number | null | undefined): string {
+  return v === null || v === undefined || !Number.isFinite(v) ? '—' : String(Number(Number(v).toPrecision(10)));
+}
+function rangeText(row: WindowMetricsRecord): string {
+  if (row.low === null && row.high === null) return '未记录';
+  return `${row.low === null ? '—' : metricNumber(row.low)} – ${row.high === null ? '—' : metricNumber(row.high)}`;
 }
 
-function labKey(l: Lab): string {
-  return `${l.name}||${l.unit || ''}`;
-}
-
-function buildGroups(labs: Lab[]): Group[] {
-  const map = new Map<string, Group>();
-  for (const l of labs) {
-    if (l.value === null || l.value === undefined) continue; // 只画数值
-    const key = labKey(l);
-    let g = map.get(key);
-    if (!g) {
-      g = { key, label: l.name, unit: l.unit || '', category: l.category || '', records: [] };
-      map.set(key, g);
-    }
-    g.records.push(l);
-  }
-  for (const g of map.values()) g.records.sort((a, b) => (a.date < b.date ? -1 : 1));
-  return [...map.values()].sort((a, b) => b.records.length - a.records.length || a.label.localeCompare(b.label));
-}
-
-const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(Number(v.toPrecision(10))));
-
-// 极简折线图（含参考区间底色）
-function LineChart({ records, low, high }: { records: Lab[]; low: number | null; high: number | null }) {
-  const W = 720, H = 220, PAD = 36;
-  const pts = records.filter((r) => r.value !== null) as (Lab & { value: number })[];
-  if (pts.length === 0) return null;
-  const xs = pts.map((p) => Date.parse(p.date)).filter((n) => Number.isFinite(n));
-  const vals = pts.map((p) => p.value);
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  if (low !== null) lo = Math.min(lo, low);
-  if (high !== null) hi = Math.max(hi, high);
-  const span = hi - lo || 1;
-  lo -= span * 0.1; hi += span * 0.1;
-  const x0 = Math.min(...xs), x1 = Math.max(...xs);
-  const sx = (t: number) => PAD + ((x1 === x0 ? 0.5 : (t - x0) / (x1 - x0)) * (W - 2 * PAD));
-  const sy = (v: number) => H - PAD - ((v - lo) / (hi - lo)) * (H - 2 * PAD);
-  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(Date.parse(p.date)).toFixed(1)},${sy(p.value).toFixed(1)}`).join(' ');
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="metric-chart" style={{ width: '100%', height: 'auto', display: 'block' }} role="img" aria-label="趋势图">
-      {low !== null && high !== null && (
-        <rect x={PAD} y={sy(high)} width={W - 2 * PAD} height={Math.max(0, sy(low) - sy(high))} fill="var(--pine-100)" opacity={0.5} />
-      )}
-      {low !== null && <line x1={PAD} x2={W - PAD} y1={sy(low)} y2={sy(low)} stroke="var(--line-strong)" strokeDasharray="4 3" />}
-      {high !== null && <line x1={PAD} x2={W - PAD} y1={sy(high)} y2={sy(high)} stroke="var(--line-strong)" strokeDasharray="4 3" />}
-      <path d={path} fill="none" stroke="var(--pine-600)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      {pts.map((p) => {
-        const bad = (high !== null && p.value > high) || (low !== null && p.value < low);
-        return <circle key={p.id} cx={sx(Date.parse(p.date))} cy={sy(p.value)} r={3.5} fill={bad ? '#B4553F' : 'var(--pine-600)'} />;
-      })}
-      <text x={PAD} y={H - 8} fontSize={11} fill="var(--ink-4)">{records[0]?.date}</text>
-      <text x={W - PAD} y={H - 8} fontSize={11} fill="var(--ink-4)" textAnchor="end">{records[records.length - 1]?.date}</text>
-    </svg>
-  );
-}
+const KIND_OPTS: [string, string][] = [
+  ['labs', '检验'], ['weights', '体重与身体成分'], ['body', '身体围度'], ['vitals', '生命体征'], ['sleepLogs', '睡眠'],
+];
 
 export function MetricsView({ go }: { go: (to: string) => void }) {
   const { data } = useStore();
   const { setHead } = useHead();
-  const labs = data?.labs ?? [];
-  const groups = useMemo(() => buildGroups(labs), [labs]);
-  const [selectedKey, setSelectedKey] = useState<string>('');
+  const HM = window.HealthMetrics;
+
+  const groups = useMemo<WindowMetricGroup[]>(() => {
+    if (!data || !HM) return [];
+    return HM.collect(data as unknown as Record<string, unknown>);
+  }, [data, HM]);
+
   const [q, setQ] = useState('');
+  const [kind, setKind] = useState('');
+  const [selectedKey, setSelectedKey] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [picking] = useState(false);
+  const lastKeyRef = useRef('');
 
   const selected = groups.find((g) => g.key === selectedKey) || groups[0];
 
   useEffect(() => {
-    setHead({ title: '指标趋势', sub: '按指标汇总记录，查看每一次结果和变化。只连接同名、同单位的结果' });
+    if (selected && selected.key !== lastKeyRef.current) { setPage(1); lastKeyRef.current = selected.key; }
+  }, [selected]);
+
+  useEffect(() => {
+    setHead({
+      eyebrow: '当前档案 · 我的档案',
+      title: '指标趋势',
+      sub: '按指标汇总记录，查看每一次结果和变化。',
+      actions: (
+        <>
+          <button className="btn btn-ghost" type="button" onClick={() => go('labs-all')}>全部检验记录</button>
+          <button className="btn btn-primary" type="button" onClick={() => go('labs-all')}><Icon name="plus" />录入检验</button>
+        </>
+      ),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visible = groups.filter((g) => (q.trim() ? `${g.label} ${g.unit} ${g.category}`.toLowerCase().includes(q.trim().toLowerCase()) : true));
+  const visible = groups.filter((g) => {
+    if (kind && g.kind !== kind) return false;
+    const needle = q.trim().toLowerCase();
+    if (!needle) return true;
+    return [g.label, g.unit, g.category, g.detail].join(' ').toLowerCase().includes(needle);
+  });
 
-  if (labs.length === 0) {
+  const records = selected ? HM.filter(selected.records, from, to) : [];
+  const stats = selected ? HM.summary(records) : null;
+  const totalPages = Math.max(1, Math.ceil(records.length / PAGE));
+  const curPage = Math.min(Math.max(1, page), totalPages);
+  const pageRows = records.slice().reverse().slice((curPage - 1) * PAGE, curPage * PAGE);
+
+  const applyPeriod = (period: string) => {
+    if (period === 'all') { setFrom(''); setTo(''); }
+    else {
+      const end = todayISO();
+      const start = new Date(end + 'T00:00:00');
+      start.setDate(start.getDate() - Number(period) + 1);
+      setFrom(`${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`);
+      setTo(end);
+    }
+    setPage(1);
+  };
+
+  if (!groups.length) {
     return (
       <div className="stack">
-        <div className="empty-state">
-          <p className="es-title">还没有检验数据</p>
-          <p className="es-desc">录入检验结果后，这里会按指标汇总趋势；只连接同名、同单位的结果。</p>
-          <div className="es-actions" style={{ justifyContent: 'center' }}>
-            <button className="btn btn-primary" type="button" onClick={() => go('labs-all')}>全部检验记录</button>
-          </div>
+        <div className="metric-empty" style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <h2>还没有可汇总的指标</h2>
+          <p className="hint">录入检验结果、体重或生命体征后，就能按指标查看变化。仅保存报告图片或文字不会自动生成指标。</p>
+          <button className="btn btn-primary" type="button" onClick={() => go('labs-all')}>录入检验结果</button>
         </div>
       </div>
     );
   }
 
-  const recs = selected?.records ?? [];
-  const last = recs[recs.length - 1];
-  const prev = recs.length > 1 ? recs[recs.length - 2] : null;
-  const delta = last && prev && last.value !== null && prev.value !== null ? last.value - prev.value : null;
-  const vals = recs.map((r) => r.value).filter((v): v is number => v !== null);
-  const min = vals.length ? Math.min(...vals) : null;
-  const max = vals.length ? Math.max(...vals) : null;
-  const low = last?.low ?? null;
-  const high = last?.high ?? null;
-
   return (
-    <div className="stack">
-      <div className="seg-row">
-        <span className="page-sub">{groups.length} 个可汇总指标</span>
-        <div className="seg-tools">
-          <button className="btn btn-ghost" type="button" onClick={() => go('labs-all')}>全部检验记录</button>
+    <div className={'metric-workspace' + (picking ? ' is-picking' : '')} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: 'var(--sp-4)' }}>
+      <aside className="metric-index" aria-label="指标列表">
+        <div className="metric-index-head">
+          <h2>选择指标 <small>{groups.length}</small></h2>
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索指标名称" aria-label="搜索指标名称" />
+          <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="按指标来源筛选">
+            <option value="">全部来源</option>
+            {KIND_OPTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
         </div>
-      </div>
+        <div className="metric-index-list" style={{ maxHeight: 560, overflow: 'auto' }}>
+          {visible.length === 0 ? <p className="metric-no-results">没有匹配的指标，试试其他名称或来源。</p> : visible.map((g) => {
+            const lastRec = g.records[g.records.length - 1];
+            const on = g.key === selected?.key;
+            return (
+              <button key={g.key} type="button" onClick={() => setSelectedKey(g.key)} title={g.label}
+                className="metric-index-row" aria-current={on ? 'true' : undefined}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left',
+                  padding: '8px 8px', border: 'none', borderBottom: '1px solid var(--line-soft)',
+                  background: on ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer',
+                  borderLeft: on ? '2px solid var(--pine-600)' : '2px solid transparent',
+                }}>
+                <span className="metric-index-name">{g.label}
+                  <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>
+                    {[g.unit || '无单位', g.detail].filter(Boolean).join(' · ')}
+                  </small>
+                </span>
+                <span className="metric-index-value" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {lastRec.value === null ? (lastRec.qualitative || '—') : metricNumber(lastRec.value)}
+                  <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>{g.records.length} 条</small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
 
-      <div className="metric-workspace" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: 'var(--sp-4)' }}>
-        <aside className="card" style={{ padding: 'var(--sp-3)' }}>
-          <div className="metric-index-head">
-            <h2 style={{ fontSize: 'var(--fs-h2)', margin: '0 0 8px' }}>选择指标 <small>{groups.length}</small></h2>
-            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索指标名称" style={{ width: '100%', marginBottom: 8 }} />
+      <section className="metric-detail" aria-label="指标详情">
+        <header className="metric-detail-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>{selected.label}</h2>
+            <p className="hint" style={{ margin: '4px 0 0' }}>{[selected.category, selected.unit || '单位未记录', selected.detail].filter(Boolean).join(' · ')}</p>
           </div>
-          <div style={{ maxHeight: 460, overflow: 'auto' }}>
-            {visible.length === 0 ? <p className="hint">没有匹配的指标。</p> : visible.map((g) => {
-              const l = g.records[g.records.length - 1];
-              const on = g.key === selected?.key;
-              return (
-                <button key={g.key} type="button" onClick={() => setSelectedKey(g.key)} className="metric-index-row" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left', padding: '8px 6px', border: 'none', borderBottom: '1px solid var(--line-soft)', background: on ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
-                  <span className="metric-index-name">{g.label}<small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>{[g.unit || '无单位', g.category].filter(Boolean).join(' · ')}</small></span>
-                  <span className="metric-index-value" style={{ textAlign: 'right' }}>{num(l.value)}<small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>{g.records.length} 条</small></span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+          <span className="hint">{selected.records.length} 条历史记录</span>
+        </header>
 
-        <section className="card">
-          <div className="card-head">
-            <h2>{selected.label}</h2>
-            <span className="link">{[selected.unit || '单位未记录', selected.category].filter(Boolean).join(' · ')}　·　{recs.length} 条</span>
+        <div className="metric-time-controls">
+          <label>从<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="起始日期" /></label>
+          <label>至<input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="结束日期" /></label>
+          <button className="btn" type="button" onClick={() => setPage(1)}>应用</button>
+          <div className="metric-quick">
+            <button type="button" onClick={() => applyPeriod('all')}>全部</button>
+            <button type="button" onClick={() => applyPeriod('90')}>近 90 天</button>
+            <button type="button" onClick={() => applyPeriod('365')}>近一年</button>
           </div>
+        </div>
 
-          <div className="metric-statistics" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--sp-3)', margin: '8px 0 16px' }}>
-            <div><span style={{ fontSize: 11, color: 'var(--ink-4)' }}>最近结果{last ? `　${last.date}` : ''}</span><strong style={{ display: 'block', fontSize: 'var(--fs-display)' }}>{last ? num(last.value) : '—'} <small style={{ fontSize: 12, fontWeight: 400 }}>{selected.unit}</small></strong></div>
-            <div><span style={{ fontSize: 11, color: 'var(--ink-4)' }}>较上一条{prev ? `　${prev.date}` : ''}</span><strong style={{ display: 'block', fontSize: 'var(--fs-display)' }}>{delta === null ? '—' : (delta > 0 ? '+' : '') + num(delta)} <small style={{ fontSize: 12, fontWeight: 400 }}>{delta === null ? '' : selected.unit}</small></strong></div>
-            <div><span style={{ fontSize: 11, color: 'var(--ink-4)' }}>范围内最低 / 最高</span><strong style={{ display: 'block', fontSize: 'var(--fs-display)' }}>{num(min)} / {num(max)} <small style={{ fontSize: 12, fontWeight: 400 }}>{selected.unit}</small></strong></div>
+        {stats && (
+          <div className="metric-statistics" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 'var(--sp-3)', margin: '4px 0 16px' }}>
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>最近结果{stats.latest ? `　${stats.latest.date}` : ''}</span>
+              <strong style={{ display: 'block', fontSize: 'var(--fs-display)' }}>
+                {stats.latest ? (stats.latest.value === null ? (stats.latest.qualitative || '—') : metricNumber(stats.latest.value)) : '—'}
+                <small style={{ fontSize: 12, fontWeight: 400 }}>{stats.latest && stats.latest.value !== null ? selected.unit : ''}</small>
+              </strong>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>较上一条{stats.previous ? `　${stats.previous.date}` : ''}</span>
+              <strong style={{ display: 'block', fontSize: 'var(--fs-display)' }}>
+                {stats.delta === null ? '—' : (stats.delta > 0 ? '+' : '') + metricNumber(stats.delta)}
+                <small style={{ fontSize: 12, fontWeight: 400 }}>{stats.delta === null ? '' : selected.unit}</small>
+              </strong>
+            </div>
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>筛选范围内最低 / 最高</span>
+              <strong style={{ display: 'block', fontSize: 'var(--fs-display)' }}>
+                {metricNumber(stats.min)} / {metricNumber(stats.max)}
+                <small style={{ fontSize: 12, fontWeight: 400 }}>{selected.unit}</small>
+              </strong>
+            </div>
           </div>
+        )}
 
-          <LineChart records={recs} low={low} high={high} />
-          <p className="metric-chart-note hint" style={{ marginTop: 8 }}>底色为最近一条记录的参考范围参考；各次范围不同时以明细为准。连接线仅辅助观察。</p>
+        <div style={{ margin: '8px 0' }}>
+          {records.length === 0 ? (
+            <p className="metric-no-results">当前时间范围没有数据。</p>
+          ) : !stats?.numeric.length ? (
+            <p className="metric-no-results">该指标为定性结果，按日期查看下方明细，不转换为数值曲线。</p>
+          ) : (
+            <EChart
+              points={stats.numeric.map((r) => ({ date: r.date, value: r.value as number }))}
+              low={stats.sharedRange?.low ?? null}
+              high={stats.sharedRange?.high ?? null}
+              unit={selected.unit}
+              name={selected.label}
+              height={window.innerWidth < 700 ? 220 : 270}
+            />
+          )}
+        </div>
+        <p className="metric-chart-note hint" style={{ marginTop: 4 }}>
+          {stats?.variedRange ? '各次参考范围不同，请以明细中各自的范围为准。' : stats?.sharedRange ? '底色为这些记录共同的参考范围。' : '未显示参考区间底色；以每条记录实际填写的范围为准。'} 连接线仅辅助观察，未测日期不补值。
+        </p>
 
-          <div className="metric-history-head" style={{ marginTop: 16 }}>
-            <h3 style={{ fontSize: 'var(--fs-h2)' }}>逐次记录</h3>
+        <div className="metric-history-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 'var(--fs-h2)' }}>逐次记录</h3>
+          <span className="hint">{records.length} 条 · {stats?.days ?? 0} 个记录日</span>
+        </div>
+        <div className="metric-table-wrap" style={{ overflow: 'auto' }}>
+          <table className="metric-table data">
+            <thead><tr><th>日期</th><th>结果{selected.unit ? `（${selected.unit}）` : ''}</th><th>参考范围</th><th>来源 / 备注</th></tr></thead>
+            <tbody>
+              {pageRows.map((row) => {
+                const hi = row.flag === 'H' || (row.value !== null && row.high !== null && row.value > row.high);
+                const lo = row.flag === 'L' || (row.value !== null && row.low !== null && row.value < row.low);
+                return (
+                  <tr key={row.id}>
+                    <td className="date">{row.date}</td>
+                    <td className={'metric-result' + (hi || lo ? ' is-flagged' : '')} style={hi || lo ? { color: '#B4553F', fontWeight: 600 } : undefined}>
+                      {row.value === null ? (row.qualitative || '—') : metricNumber(row.value)}{hi ? ' ↑' : lo ? ' ↓' : ''}
+                    </td>
+                    <td>{rangeText(row)}</td>
+                    <td>{row.source || '—'}{row.note ? <small style={{ color: 'var(--ink-4)' }}>　{row.note}</small> : null}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="metric-pagination" style={{ display: 'flex', gap: 10, justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
+            <button className="btn" type="button" disabled={curPage === 1} onClick={() => setPage((p) => p - 1)}>上一页</button>
+            <span className="hint">{curPage} / {totalPages}</span>
+            <button className="btn" type="button" disabled={curPage === totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
           </div>
-          <div className="metric-table-wrap" style={{ overflow: 'auto' }}>
-            <table className="tbl metric-table">
-              <thead><tr><th>日期</th><th>结果{selected.unit ? `（${selected.unit}）` : ''}</th><th>参考范围</th><th>来源 / 备注</th></tr></thead>
-              <tbody>
-                {recs.slice().reverse().map((r) => {
-                  const hiF = r.flag === 'H' || (r.value !== null && r.high !== null && r.value > r.high);
-                  const loF = r.flag === 'L' || (r.value !== null && r.low !== null && r.value < r.low);
-                  return (
-                    <tr key={r.id}>
-                      <td><span className="ts">{r.date}</span></td>
-                      <td style={hiF || loF ? { color: '#B4553F', fontWeight: 600 } : undefined}>{r.value === null ? (r.qualitative || '—') : num(r.value)}{hiF ? ' ↑' : loF ? ' ↓' : ''}</td>
-                      <td>{r.low === null && r.high === null ? '未记录' : `${num(r.low)} – ${num(r.high)}`}</td>
-                      <td>{r.source || '—'}{r.note ? <small style={{ color: 'var(--ink-4)' }}>　{r.note}</small> : null}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+        )}
+      </section>
     </div>
   );
 }
