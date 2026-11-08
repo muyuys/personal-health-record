@@ -15,6 +15,8 @@ import { LabsAllView } from './features/metrics/LabsAllView';
 import { MedsView } from './features/meds/MedsView';
 import { ReportsView } from './features/reports/ReportsView';
 import { ThemesView } from './features/themes/ThemesView';
+import { MeView } from './features/me/MeView';
+import { SettingsView } from './features/settings/SettingsView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -77,9 +79,9 @@ function Views() {
       case 'assistant':
         return <StubView title="AI 问答" sub="基于你的记录提问" note="批次 6 将实现：接入本地模型的多轮问答。" />;
       case 'settings':
-        return <StubView title="设置" sub="模型与偏好" note="批次 5/6 将实现：模型配置、导入导出。" />;
+        return <SettingsView go={go} />;
       case 'me':
-        return <StubView title="我的" sub="档案与存储" note="批次 5 将实现：个人档案、病史、导入导出与存储。" />;
+        return <MeView go={go} />;
       default:
         return <HomeView go={go} />;
     }
