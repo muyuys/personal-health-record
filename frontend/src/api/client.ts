@@ -2,7 +2,7 @@
 // 关键修复（对应 app.core.js:855 缺陷）：所有写操作都返回 Promise，
 // 调用方必须 await 到真实结果，失败抛错——不再「发起即返回 true」。
 
-import { ConflictError, type Visit, type WriteResult } from './types';
+import { ConflictError, type Visit, type WriteResult, type Snapshot, type OriginalsItem } from './types';
 
 const BASE = ''; // 走 vite 代理同源；如需跨域可在 vite.config.ts 配 proxy
 
@@ -46,4 +46,36 @@ export const api = {
       `/api/visits/${encodeURIComponent(id)}?expected_revision=${expectedRevision}`,
       { method: 'DELETE' },
     ),
+
+  // ---- 快照 / 整表替换（迁移期：非就诊模块用，与旧 server 数据层一致） ----
+  getAll: () => request<Snapshot>('/api/all'),
+  getOriginals: () => request<OriginalsItem[]>('/api/originals'),
+  importBackup: (data: unknown) =>
+    request<{ ok: boolean; labs: number; reports: number }>('/api/import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  exportUrl: () => BASE + '/api/export',
+
+  // 整表替换：键名与后端路由一一对应
+  putTable: <T = unknown>(table: string, rows: T[]) =>
+    request<{ ok: boolean; n: number }>(`/api/${table}`, {
+      method: 'PUT',
+      body: JSON.stringify(rows),
+    }),
+  putState: (data: { weights?: unknown[]; done?: Record<string, unknown>; body?: unknown; profileOverrides?: Record<string, unknown> }) =>
+    request<{ ok: boolean }>('/api/state', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  putHistory: (data: Record<string, unknown[]>) =>
+    request<{ ok: boolean; n: Record<string, number> }>('/api/history', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  putIssueStatus: (data: Record<string, unknown>) =>
+    request<{ ok: boolean; n: number }>('/api/issue-status', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
 };

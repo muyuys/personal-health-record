@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { Visit } from '../../api/types';
+import { useHead } from '../../components/head';
 
 interface Props {
   id: string;
@@ -27,6 +28,12 @@ function KvRow({ label, value }: { label: string; value: string }) {
 export function VisitDetail({ id, onBack, onEdit }: Props) {
   const [visit, setVisit] = useState<Visit | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { setHead } = useHead();
+
+  useEffect(() => {
+    setHead({ eyebrow: '就医记录', title: '就诊详情', sub: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   useEffect(() => {
     let alive = true;

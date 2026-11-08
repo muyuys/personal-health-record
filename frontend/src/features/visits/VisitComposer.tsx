@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { ConflictError, type Visit } from '../../api/types';
+import { useHead } from '../../components/head';
 
 interface Props {
   edit?: Visit;
@@ -29,6 +30,12 @@ export function VisitComposer({ edit, onCancel, onSaved }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { setHead } = useHead();
+
+  useEffect(() => {
+    setHead({ eyebrow: '就医记录', title: edit ? '编辑就诊' : '记一次就诊', sub: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const set = (k: keyof Draft, v: string) => setDraft((d) => ({ ...d, [k]: v }));
 
