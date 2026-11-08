@@ -9,6 +9,7 @@ import { VisitList } from './features/visits/VisitList';
 import { VisitDetail } from './features/visits/VisitDetail';
 import { VisitComposer } from './features/visits/VisitComposer';
 import { StubView } from './features/common/StubView';
+import { DailyView } from './features/daily/DailyView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -58,7 +59,7 @@ function Views() {
       case 'metrics':
         return <StubView title="指标趋势" sub="检验指标随时间的走向" note="批次 3 将实现：按指标分类的趋势图表与参考区间。" />;
       case 'daily':
-        return <StubView title="日常健康" sub="体重 · 体征 · 症状 · 睡眠 · 饮食" note="批次 2 将实现：五个分段的日常记录。" />;
+        return <DailyView />;
       case 'themes':
         return <StubView title="健康主题" sub="按问题归拢的健康线索" note="批次 4 将实现：健康主题与待办提醒。" />;
       case 'assistant':
