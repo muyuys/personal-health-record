@@ -23,7 +23,7 @@ function mdRender(s: string): string {
 
 interface Msg { id?: string; question: string; answer: string; sources?: any[]; model?: string; createdAt?: number }
 
-export function AssistantView({ go }: { go: (to: string) => void }) {
+export function AssistantView({ go: _go }: { go: (to: string) => void }) {
   const { setHead } = useHead();
   const [status, setStatus] = useState<any>(null);
   const [models, setModels] = useState<any[]>([]);
@@ -38,7 +38,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setHead({ title: 'AI 健康问答', sub: '结合已保存的健康记录整理信息，回答可核对来源', actions: <button className="btn btn-ghost" type="button" onClick={() => go('settings')}>连接设置</button> });
+    setHead({ title: 'AI 健康问答', sub: '结合已保存的健康记录整理信息，回答可核对来源' });
     void (async () => {
       try {
         const [st, hist, cat, rf] = await Promise.all([
@@ -115,7 +115,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
   return (
     <div className="ai-page">
       <div className="ai-layout" style={{ display: 'block' }}>
-        <section className="ai-conversation" aria-label="健康问答">
+        <section className="ai-conversation" aria-label="健康问答" style={{ maxWidth: 760, marginLeft: 'auto', marginRight: 'auto' }}>
           <div id="aiMessages" ref={listRef} style={{ paddingBottom: 56 }}>
             {messages.length === 0 && !busy ? (
               <div className="ai-empty">
@@ -148,7 +148,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
         </section>
       </div>
 
-      <div className="ai-composer">
+      <div className="ai-composer" style={{ marginLeft: 'auto', marginRight: 'auto' }}>
         <form id="aiForm" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
           <label className="ai-compose-label" htmlFor="aiQuestion">向当前档案提问</label>
           {picked.length > 0 && (
