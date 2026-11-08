@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
-import { HeadProvider, useHead } from './components/head';
-import { Icon } from './components/icons';
+import { useState } from 'react';
+import { HeadProvider } from './components/head';
 import { Shell } from './components/Shell';
 import { useRoute } from './store/useRoute';
 import { useStore } from './store/useStore';
 import { HomeView } from './features/home/HomeView';
-import { VisitList } from './features/visits/VisitList';
+import { RecordsView } from './features/records/RecordsView';
 import { VisitDetail } from './features/visits/VisitDetail';
 import { VisitComposer } from './features/visits/VisitComposer';
 import { DailyView } from './features/daily/DailyView';
@@ -33,11 +32,13 @@ function Views() {
       case 'records':
         return (
           <RecordsView
-            onOpen={(id) => go('visit/' + id)}
-            onNew={() => {
+            go={go}
+            onOpenVisit={(id) => go('visit/' + id)}
+            onNewVisit={() => {
               setEditing(undefined);
               go('new-visit');
             }}
+            onNewReport={() => go('new-report')}
           />
         );
       case 'visit':
@@ -107,25 +108,6 @@ function Views() {
       {render()}
     </Shell>
   );
-}
-
-// 就医记录列表包装：与 Shell 配合（列表自带 useVisits）
-function RecordsView({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: () => void }) {
-  const { setHead } = useHead();
-  useEffect(() => {
-    setHead({
-      title: '就医记录',
-      sub: '同一次看病，资料、用药、安排都在一条里',
-      actions: (
-        <button className="btn btn-primary" type="button" onClick={onNew}>
-          <Icon name="plus" />
-          记一次就诊
-        </button>
-      ),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return <VisitList flashId={null} onOpen={onOpen} onNew={onNew} />;
 }
 
 export function App() {
