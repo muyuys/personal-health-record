@@ -12,6 +12,9 @@ import { StubView } from './features/common/StubView';
 import { DailyView } from './features/daily/DailyView';
 import { MetricsView } from './features/metrics/MetricsView';
 import { LabsAllView } from './features/metrics/LabsAllView';
+import { MedsView } from './features/meds/MedsView';
+import { ReportsView } from './features/reports/ReportsView';
+import { ThemesView } from './features/themes/ThemesView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -65,7 +68,12 @@ function Views() {
       case 'daily':
         return <DailyView />;
       case 'themes':
-        return <StubView title="健康主题" sub="按问题归拢的健康线索" note="批次 4 将实现：健康主题与待办提醒。" />;
+        return <ThemesView go={go} />;
+      case 'meds':
+        return <MedsView go={go} />;
+      case 'reports':
+      case 'new-report':
+        return <ReportsView go={go} />;
       case 'assistant':
         return <StubView title="AI 问答" sub="基于你的记录提问" note="批次 6 将实现：接入本地模型的多轮问答。" />;
       case 'settings':

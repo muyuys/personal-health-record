@@ -62,6 +62,14 @@ export function HomeView({ go }: { go: (to: string) => void }) {
           <span className="qc-icon"><Icon name="pulse" /></span>
           <span className="qc-body"><span className="qc-title">记日常数据</span><span className="qc-desc">体重、血压、症状、睡眠</span></span>
         </button>
+        <button className="quick-card" type="button" onClick={() => go('meds')}>
+          <span className="qc-icon"><Icon name="check" /></span>
+          <span className="qc-body"><span className="qc-title">用药记录</span><span className="qc-desc">剂量、频次、起止</span></span>
+        </button>
+        <button className="quick-card" type="button" onClick={() => go('reports')}>
+          <span className="qc-icon"><Icon name="file" /></span>
+          <span className="qc-body"><span className="qc-title">报告档案</span><span className="qc-desc">查看已存原件</span></span>
+        </button>
       </section>
 
       {openTodos > 0 && (
