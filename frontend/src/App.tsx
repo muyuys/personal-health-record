@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { HeadProvider } from './components/head';
+import { ModalProvider } from './components/Modal';
 import { Shell } from './components/Shell';
 import { useRoute } from './store/useRoute';
 import { useStore } from './store/useStore';
@@ -10,14 +11,11 @@ import { VisitComposer } from './features/visits/VisitComposer';
 import { DailyView } from './features/daily/DailyView';
 import { MetricsView } from './features/metrics/MetricsView';
 import { LabsAllView } from './features/metrics/LabsAllView';
-import { MedsView } from './features/meds/MedsView';
-import { ReportsView } from './features/reports/ReportsView';
 import { ThemesView } from './features/themes/ThemesView';
 import { MeView } from './features/me/MeView';
 import { SettingsView } from './features/settings/SettingsView';
 import { AssistantView } from './features/assistant/AssistantView';
 import { MembersView } from './features/members/MembersView';
-import { AboutView } from './features/about/AboutView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -38,7 +36,6 @@ function Views() {
               setEditing(undefined);
               go('new-visit');
             }}
-            onNewReport={() => go('new-report')}
           />
         );
       case 'visit':
@@ -75,10 +72,18 @@ function Views() {
       case 'themes':
         return <ThemesView go={go} />;
       case 'meds':
-        return <MedsView go={go} />;
       case 'reports':
       case 'new-report':
-        return <ReportsView go={go} />;
+        return (
+          <RecordsView
+            go={go}
+            onOpenVisit={(id) => go('visit/' + id)}
+            onNewVisit={() => {
+              setEditing(undefined);
+              go('new-visit');
+            }}
+          />
+        );
       case 'assistant':
         return <AssistantView go={go} />;
       case 'settings':
@@ -86,7 +91,8 @@ function Views() {
       case 'members':
         return <MembersView go={go} />;
       case 'about':
-        return <AboutView go={go} />;
+        // 老版「关于」只是设置里的一个 section，这里直接落到设置的关于面板
+        return <SettingsView go={go} initialSection="about" />;
       case 'me':
         return <MeView go={go} />;
       default:
@@ -113,7 +119,9 @@ function Views() {
 export function App() {
   return (
     <HeadProvider>
-      <Views />
+      <ModalProvider>
+        <Views />
+      </ModalProvider>
     </HeadProvider>
   );
 }
