@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import migrate
-from .routers import visits
+from .routers import visits, snapshot
 
 app = FastAPI(title="个人健康档案 · API（升级版）", version="0.1.0")
 
@@ -30,10 +30,17 @@ app.add_middleware(
 
 @app.on_event("startup")
 def _startup() -> None:
+    # 旧服务的 init_db 建全量表 + 幂等 ALTER；先跑它保证库完整，再跑版本化迁移。
+    try:
+        from . import legacy
+        legacy.init_db()
+    except Exception:  # noqa: BLE001
+        pass
     migrate()
 
 
 app.include_router(visits.router)
+app.include_router(snapshot.router)
 
 
 @app.get("/api/health")
