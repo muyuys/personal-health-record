@@ -114,7 +114,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
 
   return (
     <div className="ai-page">
-      <div className="ai-layout">
+      <div className="ai-layout" style={{ gridTemplateColumns: 'minmax(0,1fr)', maxWidth: 860 }}>
         <section className="ai-conversation" aria-label="健康问答">
           <div id="aiMessages" ref={listRef} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {messages.length === 0 && !busy ? (
@@ -146,16 +146,6 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
             {busy ? <article className="ai-message is-pending"><div className="ai-turn-ai"><p className="ai-typing" role="status"><span>正在检索记录并整理…</span></p></div></article> : null}
           </div>
         </section>
-        <details className="ai-notes" open>
-          <summary><h2>依据与范围</h2></summary>
-          <div>
-            <p>只使用当前这一个档案的资料；其它档案的记录、报告和问答各自独立，不会互相检索。</p>
-            <p>记录为空表示当前档案未记录，不能当作没有症状或疾病。</p>
-            <p>问答记录只保存在本机；想清空时在输入框输入 <code>/reset</code> 并回车，检验、报告等记录不受影响。</p>
-            <p>{status?.dataNotice || ''}</p>
-            <p>回答用于整理和复诊准备，不代替诊断，不作为自行调整用药的依据。</p>
-          </div>
-        </details>
       </div>
 
       <div className="ai-composer">
