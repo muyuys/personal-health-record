@@ -38,14 +38,14 @@ function statusChip(status: string) {
 
 const FOLLOW: Record<string, string> = { visit: '复诊', exam: '定期检查', lab: '复查化验', other: '其他' };
 
-export function ThemesView({ go }: { go: (to: string) => void }) {
+export function ThemesView({ go, initialId }: { go: (to: string) => void; initialId?: string }) {
   const { data, reload } = useStore();
   const { setHead } = useHead();
   const todos = data?.todoItems ?? [];
   const issueStatus = (data?.issueStatus ?? {}) as Record<string, { status?: string; note?: string }>;
   const done = (data?.done ?? {}) as Record<string, boolean>;
   const [filter, setFilter] = useState('');
-  const [sel, setSel] = useState('');
+  const [sel, setSel] = useState(initialId && ISSUES.some((i) => i.id === initialId) ? initialId : '');
   const [newTodo, setNewTodo] = useState('');
   const [editingStatus, setEditingStatus] = useState(false);
   const [statusDraft, setStatusDraft] = useState({ status: 'monitor', note: '' });
@@ -57,7 +57,7 @@ export function ThemesView({ go }: { go: (to: string) => void }) {
       sub: `${ISSUES.length} 个主题　·　医院报告、本人描述与辅助分析分开标注`,
       actions: (
         <>
-          <a className="btn btn-ghost" href="#/labs-all">检验指标 →</a>
+          <a className="btn btn-ghost" href="#/labs">检验指标 →</a>
           <button className="btn btn-primary" type="button" onClick={() => alert('新增主题：本版暂随静态档案维护，编辑请到「我的档案」或联系管理员。')}><Icon name="plus" />新增主题</button>
         </>
       ),

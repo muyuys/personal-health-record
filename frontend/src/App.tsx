@@ -11,7 +11,10 @@ import { VisitComposer } from './features/visits/VisitComposer';
 import { DailyView } from './features/daily/DailyView';
 import { MetricsView } from './features/metrics/MetricsView';
 import { LabsAllView } from './features/metrics/LabsAllView';
+import { LabsView } from './features/metrics/LabsView';
 import { ThemesView } from './features/themes/ThemesView';
+import { TodosView } from './features/todos/TodosView';
+import { SummaryView } from './features/summary/SummaryView';
 import { MeView } from './features/me/MeView';
 import { SettingsView } from './features/settings/SettingsView';
 import { AssistantView } from './features/assistant/AssistantView';
@@ -66,12 +69,20 @@ function Views() {
         );
       case 'metrics':
         return <MetricsView go={go} />;
+      case 'labs':
+        return <LabsView go={go} />;
       case 'labs-all':
         return <LabsAllView go={go} />;
       case 'daily':
         return <DailyView />;
       case 'themes':
         return <ThemesView go={go} />;
+      case 'theme':
+        return <ThemesView go={go} initialId={route.param || route.query.id} />;
+      case 'todos':
+        return <TodosView go={go} />;
+      case 'summary':
+        return <SummaryView go={go} presetVisit={route.query.visit} />;
       case 'meds':
       case 'reports':
       case 'new-report':

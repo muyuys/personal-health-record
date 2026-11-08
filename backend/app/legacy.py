@@ -38,11 +38,12 @@ replace_issue_status = legacy.replace_issue_status
 replace_todo_items = legacy.replace_todo_items
 replace_profile_overrides = legacy.replace_profile_overrides
 list_originals = legacy.list_originals
+image_dir = legacy.image_dir
 
 __all__ = [
     "legacy", "get_all", "init_db", "export_status",
     "replace_labs", "replace_reports", "replace_state", "replace_history",
     "replace_vitals", "replace_symptoms", "replace_diet_days", "replace_diet_weeks",
     "replace_sleep_logs", "replace_issue_status", "replace_todo_items",
-    "replace_profile_overrides", "list_originals",
+    "replace_profile_overrides", "list_originals", "image_dir",
 ]

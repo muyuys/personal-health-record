@@ -136,7 +136,7 @@ export function HomeView({ go }: { go: (to: string) => void }) {
         <section className="home-next">
           <div className="section-head" style={{ marginTop: 0 }}>
             <h2>接下来要做</h2>
-            <button className="btn-plain" type="button" onClick={() => go('themes')}>
+            <button className="btn-plain" type="button" onClick={() => go('todos')}>
               全部 {openCount} 项
               {overdue > 0 && <span className="rdot" role="img" aria-label={`其中 ${overdue} 项已过期`} />}
               {' →'}

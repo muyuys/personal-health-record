@@ -11,10 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import migrate
+from .deps import profile_context, resolve_profile
 from .routers import visits, snapshot, features
 
 app = FastAPI(title="个人健康档案 · API（升级版）", version="0.1.0")
@@ -51,5 +53,13 @@ def health():
     return {"ok": True, "service": "fastapi-upgrade"}
 
 
-# 预留：复用旧 health_features.py（OCR/AI/chat）的适配入口。
-# 迁移下一步在此挂 router: parse_image / chat 等，直接 import 旧模块函数。
+@app.get("/files/{name}")
+def serve_file(name: str, pid: str = Depends(resolve_profile)):
+    """报告原件图片：对齐旧 health_server 的 /files/<name>（从当前成员 image_dir 读取）。"""
+    from . import legacy
+    safe = Path(name).name  # 防路径穿越
+    with profile_context(pid):
+        target = Path(legacy.image_dir()) / safe
+    if not target.is_file():
+        raise HTTPException(404, "文件不存在")
+    return FileResponse(str(target))

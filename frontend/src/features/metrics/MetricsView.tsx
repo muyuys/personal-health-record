@@ -95,7 +95,7 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
         <div className="metric-empty" style={{ padding: '40px 20px', textAlign: 'center' }}>
           <h2>还没有可汇总的指标</h2>
           <p className="hint">录入检验结果、体重或生命体征后，就能按指标查看变化。仅保存报告图片或文字不会自动生成指标。</p>
-          <button className="btn btn-primary" type="button" onClick={() => go('labs-all')}>录入检验结果</button>
+          <button className="btn btn-primary" type="button" onClick={() => go('labs')}>录入检验结果</button>
         </div>
       </div>
     );

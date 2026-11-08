@@ -7,14 +7,30 @@ export interface Route {
   name: string;
   /** 二级参数（如就诊 id、报告 id、daily 分段 vitals 等） */
   param?: string;
+  /** ?query 参数（如 seg=body、tab=diet、section=about、id=xxx、visit=xxx） */
+  query: Record<string, string>;
   raw: string;
 }
 
 function parseHash(): Route {
   const h = (typeof location !== 'undefined' ? location.hash : '').replace(/^#\/?/, '');
-  const parts = h.split('/').filter(Boolean);
+  const qi = h.indexOf('?');
+  const pathPart = qi >= 0 ? h.slice(0, qi) : h;
+  const queryPart = qi >= 0 ? h.slice(qi + 1) : '';
+  const parts = pathPart.split('/').filter(Boolean);
   const name = parts[0] || 'home';
-  return { name, param: parts[1], raw: h };
+  const query: Record<string, string> = {};
+  if (queryPart) {
+    for (const pair of queryPart.split('&')) {
+      if (!pair) continue;
+      const eq = pair.indexOf('=');
+      const k = eq >= 0 ? pair.slice(0, eq) : pair;
+      const v = eq >= 0 ? pair.slice(eq + 1) : '';
+      try { query[decodeURIComponent(k)] = decodeURIComponent(v); }
+      catch { query[k] = v; }
+    }
+  }
+  return { name, param: parts[1], query, raw: h };
 }
 
 export function useRoute() {
@@ -27,10 +43,11 @@ export function useRoute() {
   }, []);
 
   const go = useCallback((to: string) => {
-    if (location.hash === '#/' + to) {
+    const target = '#/' + to;
+    if (location.hash === target) {
       setRoute(parseHash());
     } else {
-      location.hash = '#/' + to;
+      location.hash = target;
     }
   }, []);
 

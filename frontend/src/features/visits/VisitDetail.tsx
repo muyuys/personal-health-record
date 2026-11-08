@@ -279,7 +279,7 @@ export function VisitDetail({ id, onBack, onEdit, go }: Props) {
         ) : (
           <p className="hint">未添加下一步安排。</p>
         )}
-        <div className="form-actions"><button className="btn btn-ghost" type="button" onClick={() => go?.('home')}>查看全部提醒 →</button></div>
+        <div className="form-actions"><button className="btn btn-ghost" type="button" onClick={() => go?.('todos')}>查看全部提醒 →</button></div>
         <p className="hint" style={{ marginTop: 'var(--sp-2)' }}>提醒按「{visitGroupName(v)}」分组自动归到这次就诊；同一天两次就诊会共用一个分组。</p>
       </section>
 
@@ -302,7 +302,7 @@ export function VisitDetail({ id, onBack, onEdit, go }: Props) {
       <section className="card">
         <div className="card-head"><h2>就诊摘要</h2><span className="hint">给医生看的一页纸，缺项写「未记录」</span></div>
         <div className="form-actions" style={{ marginTop: 0 }}>
-          <button className="btn btn-secondary" type="button" onClick={() => go?.('records')}>预览并导出给医生</button>
+          <button className="btn btn-secondary" type="button" onClick={() => go?.(`summary?visit=${v.id}`)}>预览并导出给医生</button>
           <button className="btn btn-danger-ghost" type="button" onClick={del}>删除这条</button>
         </div>
       </section>
