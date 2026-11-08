@@ -10,6 +10,8 @@ import { VisitDetail } from './features/visits/VisitDetail';
 import { VisitComposer } from './features/visits/VisitComposer';
 import { StubView } from './features/common/StubView';
 import { DailyView } from './features/daily/DailyView';
+import { MetricsView } from './features/metrics/MetricsView';
+import { LabsAllView } from './features/metrics/LabsAllView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -57,7 +59,9 @@ function Views() {
           />
         );
       case 'metrics':
-        return <StubView title="指标趋势" sub="检验指标随时间的走向" note="批次 3 将实现：按指标分类的趋势图表与参考区间。" />;
+        return <MetricsView go={go} />;
+      case 'labs-all':
+        return <LabsAllView go={go} />;
       case 'daily':
         return <DailyView />;
       case 'themes':
