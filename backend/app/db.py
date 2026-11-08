@@ -13,7 +13,8 @@ import threading
 import contextvars
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent          # F:/Health
+# app/db.py 的上三级才是仓库根 F:/Health（backend/app -> backend -> F:/Health）
+ROOT = Path(__file__).resolve().parent.parent.parent    # F:/Health
 DB_PATH = ROOT / "data" / "health.db"
 
 # 测试/隔离用：HEALTH_DB_PATH 环境变量可覆盖数据库路径（默认仍为 data/health.db）
