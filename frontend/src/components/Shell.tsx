@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './icons';
 import { useHead } from './head';
 import { getActiveProfile } from '../api/profile';
 import { api } from '../api/client';
+import { ProfileMenu } from '../features/profile-menu/ProfileMenu';
 import type { Route } from '../store/useRoute';
 
 // 一级导航（对齐 js/app.views.health.js NAV）
@@ -38,6 +39,8 @@ export function Shell({ route, go, children }: { route: Route; go: (to: string) 
   const { head } = useHead();
   const [collapsed, setCollapsed] = useState(true);
   const [memberName, setMemberName] = useState('我的档案');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const meBtnRef = useRef<HTMLButtonElement>(null);
   const active = activeNav(route.name);
 
   useEffect(() => {
@@ -67,17 +70,30 @@ export function Shell({ route, go, children }: { route: Route; go: (to: string) 
   const mainNav = NAV.filter((n) => !n.bottom);
   const bottomNav = NAV.filter((n) => n.bottom);
 
-  const navBtn = (n: (typeof NAV)[number]) => (
-    <button
-      key={n.id}
-      className={'nav-item' + (active === n.id ? ' active' : '')}
-      type="button"
-      onClick={() => go(n.id)}
-    >
-      <Icon name={n.icon} />
-      <span>{n.label}</span>
-    </button>
-  );
+  const navBtn = (n: (typeof NAV)[number]) => {
+    const isMe = n.id === 'me';
+    return (
+      <button
+        key={n.id}
+        ref={isMe ? meBtnRef : undefined}
+        className={'nav-item' + (active === n.id ? ' active' : '')}
+        type="button"
+        aria-haspopup={isMe ? 'dialog' : undefined}
+        aria-expanded={isMe ? menuOpen : undefined}
+        onClick={() => {
+          if (isMe) {
+            setMenuOpen((v) => !v);
+          } else {
+            setMenuOpen(false);
+            go(n.id);
+          }
+        }}
+      >
+        <Icon name={n.icon} />
+        <span>{n.label}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="app">
@@ -130,6 +146,13 @@ export function Shell({ route, go, children }: { route: Route; go: (to: string) 
           历史用药不自动视为当前用药。文件夹名称与未验证推测不作为确诊依据。
         </p>
       </main>
+
+      <ProfileMenu
+        open={menuOpen}
+        anchor={meBtnRef.current}
+        onClose={() => setMenuOpen(false)}
+        go={go}
+      />
     </div>
   );
 }
