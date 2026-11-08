@@ -38,15 +38,13 @@ body{font-size:14px}
   .rail .store-line .dot{position:absolute;left:25px;bottom:7px;border:2px solid var(--bg-page);box-sizing:content-box}
   .rail.is-collapsed{width:72px;flex-basis:72px;padding-left:14px;padding-right:14px}
   .rail.is-collapsed .brand-t,.rail.is-collapsed .nav-item>span:not(.ico),.rail.is-collapsed .store-line>b,.rail.is-collapsed .store-more,.rail.is-collapsed .rail-toggle>span{opacity:0;pointer-events:none}
-  /* 收起态：图标居中显示；文字标签用 display:none 彻底让出宽度（只留图标才会居中） */
-  .rail.is-collapsed .nav-item{justify-content:center;padding-left:0;padding-right:0;gap:0}
+  /* 收起态：图标保持与展开态相同的左侧内边距/位置，避免宽度动画时图标横向跳动；
+     文字标签用 display:none 让出宽度，只做淡出，不做位移。 */
+  .rail.is-collapsed .nav-item{overflow:hidden}
   .rail.is-collapsed .nav-item>span:not(.ico){display:none}
-  .rail.is-collapsed .nav-item>span.ico{opacity:1;pointer-events:auto;flex:0 0 20px}
-  .rail.is-collapsed .rail-header .brand{justify-content:center;padding-left:0;padding-right:0}
+  .rail.is-collapsed .nav-item>span.ico{opacity:1;pointer-events:auto}
   .rail.is-collapsed .brand-t{display:none}
-  .rail.is-collapsed .rail-toggle{justify-content:center;padding:0}
   .rail.is-collapsed .rail-toggle>span{display:none}
-  .rail.is-collapsed .store-line{justify-content:center;padding:0}
   .rail.is-collapsed .store-line>b,.rail.is-collapsed .store-more{display:none}
 }
 .main{padding-top:36px}
