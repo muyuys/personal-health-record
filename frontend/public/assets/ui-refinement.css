@@ -43,8 +43,9 @@ body{font-size:14px}
   .rail.is-collapsed .nav-item{overflow:hidden}
   .rail.is-collapsed .nav-item>span:not(.ico){display:none}
   .rail.is-collapsed .nav-item>span.ico{opacity:1;pointer-events:auto}
-  .rail.is-collapsed .brand-t{display:none}
-  .rail.is-collapsed .rail-toggle>span{display:none}
+  /* 收起态保留 brand-t 占位（只淡出、不 display:none），使 header 高度与展开态一致，
+     避免文字消失导致 brand 变矮、下方所有图标整体上移产生纵向跳跃。 */
+  .rail.is-collapsed .brand-t{opacity:0;pointer-events:none}
   .rail.is-collapsed .store-line>b,.rail.is-collapsed .store-more{display:none}
 }
 .main{padding-top:36px}
