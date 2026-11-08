@@ -42,6 +42,7 @@ function Views() {
         return (
           <VisitDetail
             id={route.param!}
+            go={go}
             onBack={() => go('records')}
             onEdit={(v) => {
               setEditing(v);
@@ -57,9 +58,9 @@ function Views() {
               setEditing(undefined);
               go('records');
             }}
-            onSaved={() => {
+            onSaved={(id) => {
               setEditing(undefined);
-              go('records');
+              go('visit/' + id);
             }}
           />
         );

@@ -53,6 +53,8 @@ const statusLabel = (s: string) => (STATUS.find((x) => x[0] === s) || ['', s])[1
 export interface OpenMedModalArgs {
   mode: 'view' | 'edit';
   med?: Medication | null;
+  /** 新建时预填关联就诊 */
+  presetVisitId?: string;
   onSaved?: () => void;
   onDeleted?: () => void;
 }
@@ -64,12 +66,12 @@ export function useMedModal() {
   };
 }
 
-function MedModalBody({ mode, med, onSaved, onDeleted, close }: OpenMedModalArgs & { close: () => void }) {
+function MedModalBody({ mode, med, presetVisitId, onSaved, onDeleted, close }: OpenMedModalArgs & { close: () => void }) {
   const [curMode, setCurMode] = useState<'view' | 'edit'>(mode === 'edit' || !med ? 'edit' : 'view');
   const { data, reload } = useStore();
   const meds = data?.medications ?? [];
   const visits = data?.visits ?? [];
-  const [draft, setDraft] = useState<Draft>(med ? fromMed(med) : emptyDraft());
+  const [draft, setDraft] = useState<Draft>(med ? fromMed(med) : { ...emptyDraft(), visitId: presetVisitId || '' });
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
