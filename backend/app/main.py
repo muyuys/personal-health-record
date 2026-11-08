@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import migrate
-from .routers import visits, snapshot
+from .routers import visits, snapshot, features
 
 app = FastAPI(title="个人健康档案 · API（升级版）", version="0.1.0")
 
@@ -37,10 +37,13 @@ def _startup() -> None:
     except Exception:  # noqa: BLE001
         pass
     migrate()
+    # AI / OCR / MCP 特性：建 members / ai_chat 表与 agent token
+    features.startup_init()
 
 
 app.include_router(visits.router)
 app.include_router(snapshot.router)
+app.include_router(features.router)
 
 
 @app.get("/api/health")

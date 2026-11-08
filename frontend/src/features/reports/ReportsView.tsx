@@ -30,11 +30,25 @@ export function ReportsView({ go }: { go: (to: string) => void }) {
   const [files, setFiles] = useState<string[]>([]);
   const [draft, setDraft] = useState({ date: '', title: '', hospital: '', panel: '', specimen: '', note: '', visitId: '' });
   const fileRef = useRef<HTMLInputElement>(null);
+  const [ocr, setOcr] = useState<{ idx: number; busy: boolean; lines: string[]; err: string } | null>(null);
 
   useEffect(() => {
     setHead({ title: '报告档案', sub: '原件是核心，名称和日期以后可以补' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const runOcr = async (idx: number) => {
+    const dataUrl = files[idx];
+    if (!dataUrl) return;
+    setOcr({ idx, busy: true, lines: [], err: '' });
+    try {
+      const r = await api.ai.parse(dataUrl);
+      const lines = (r?.lines || []).map((x: any) => (typeof x === 'string' ? x : x.text)).filter(Boolean);
+      setOcr({ idx, busy: false, lines, err: lines.length ? '' : '未识别到文字' });
+    } catch (e: any) {
+      setOcr({ idx, busy: false, lines: [], err: e?.message || '识别失败' });
+    }
+  };
 
   const sorted = reports.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
@@ -89,8 +103,23 @@ export function ReportsView({ go }: { go: (to: string) => void }) {
                 <div key={i} style={{ position: 'relative' }}>
                   <img src={f} alt="原件" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)' }} />
                   <button className="icon-btn" type="button" aria-label="移除" style={{ position: 'absolute', top: -6, right: -6, background: 'var(--bg-card)', borderRadius: '50%' }} onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}><Icon name="close" /></button>
+                  <button className="btn-plain" type="button" style={{ display: 'block', margin: '4px auto 0', fontSize: 12 }} onClick={() => void runOcr(i)}>识别文字</button>
                 </div>
               ))}
+            </div>
+          )}
+          {ocr && (
+            <div style={{ marginTop: 'var(--sp-4)', padding: 12, background: 'var(--bg-sunken)', borderRadius: 'var(--r-sm)' }}>
+              {ocr.busy ? <p className="hint" style={{ margin: 0 }}>正在识别（需要多模态模型）…</p> : ocr.err ? <p className="hint" style={{ margin: 0, color: 'var(--st-danger)' }}>{ocr.err}</p> : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <b style={{ fontSize: 13 }}>识别结果 · {ocr.lines.length} 行</b>
+                    <button className="btn-plain" type="button" style={{ fontSize: 12 }} onClick={() => setOcr(null)}>关闭</button>
+                  </div>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12, maxHeight: 240, overflow: 'auto' }}>{ocr.lines.join('\n')}</pre>
+                  <p className="hint" style={{ margin: '6px 0 0' }}>识别结果仅供核对，请确认无误后再录入检验数据。</p>
+                </>
+              )}
             </div>
           )}
           <div className="form-grid report-fields" style={{ marginTop: 'var(--sp-4)' }}>

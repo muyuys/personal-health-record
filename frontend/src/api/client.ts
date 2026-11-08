@@ -78,4 +78,25 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  // ---- AI / OCR / MCP（复用旧 health_features.py，语义同旧 featureAPI=POST 返回 json） ----
+  ai: {
+    status: () => request<any>('/api/ai/status'),
+    config: () => request<any>('/api/ai/config'),
+    saveConfig: (data: unknown) => request<any>('/api/ai/config', { method: 'POST', body: JSON.stringify(data) }),
+    models: (refresh = false) => request<any>(`/api/ai/models${refresh ? '?refresh=1' : ''}`),
+    history: () => request<{ messages: any[] }>('/api/ai/history'),
+    refs: () => request<{ refs: any[] }>('/api/ai/refs'),
+    reset: () => request<any>('/api/ai/reset', { method: 'POST', body: '{}' }),
+    chat: (data: { question: string; model: string; refs: { kind: string; id: string }[] }) =>
+      request<any>('/api/ai/chat', { method: 'POST', body: JSON.stringify(data) }),
+    parse: (dataUrl: string) =>
+      request<any>('/api/ai/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: dataUrl,
+      }),
+    mcpConfig: () => request<any>('/api/mcp/config'),
+    profiles: () => request<{ profiles: any[] }>('/api/profiles'),
+  },
 };

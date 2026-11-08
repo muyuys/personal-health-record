@@ -8,7 +8,6 @@ import { HomeView } from './features/home/HomeView';
 import { VisitList } from './features/visits/VisitList';
 import { VisitDetail } from './features/visits/VisitDetail';
 import { VisitComposer } from './features/visits/VisitComposer';
-import { StubView } from './features/common/StubView';
 import { DailyView } from './features/daily/DailyView';
 import { MetricsView } from './features/metrics/MetricsView';
 import { LabsAllView } from './features/metrics/LabsAllView';
@@ -17,6 +16,7 @@ import { ReportsView } from './features/reports/ReportsView';
 import { ThemesView } from './features/themes/ThemesView';
 import { MeView } from './features/me/MeView';
 import { SettingsView } from './features/settings/SettingsView';
+import { AssistantView } from './features/assistant/AssistantView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -77,7 +77,7 @@ function Views() {
       case 'new-report':
         return <ReportsView go={go} />;
       case 'assistant':
-        return <StubView title="AI 问答" sub="基于你的记录提问" note="批次 6 将实现：接入本地模型的多轮问答。" />;
+        return <AssistantView go={go} />;
       case 'settings':
         return <SettingsView go={go} />;
       case 'me':
