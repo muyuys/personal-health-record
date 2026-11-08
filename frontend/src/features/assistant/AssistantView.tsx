@@ -116,7 +116,7 @@ export function AssistantView({ go }: { go: (to: string) => void }) {
     <div className="ai-page">
       <div className="ai-layout" style={{ display: 'block' }}>
         <section className="ai-conversation" aria-label="健康问答">
-          <div id="aiMessages" ref={listRef}>
+          <div id="aiMessages" ref={listRef} style={{ paddingBottom: 56 }}>
             {messages.length === 0 && !busy ? (
               <div className="ai-empty">
                 <h2>从一条健康记录开始</h2>
