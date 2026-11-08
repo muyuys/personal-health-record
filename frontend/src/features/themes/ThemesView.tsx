@@ -1,61 +1,46 @@
-// 健康主题 & 待办清单。
-// 主题状态由化验结果按类别自动派生（异常→待随访，正常→监测中，无数据→待补充），
-// 用户可以覆盖状态与备注；待办项可勾选完成、增删改。
-import { useEffect, useMemo, useState } from 'react';
+// 健康主题：复刻旧前端 js/app.views.health.js renderIssues/issueDetail。
+// 主题来自 ARCHIVE.issues（人工整理的目录，含证据分类/关联资料/近期检查），
+// 状态与备注可在 issueStatus 里覆盖，待办清单可勾选完成、增删。
+import { useEffect, useState } from 'react';
 import { useHead } from '../../components/head';
 import { Icon } from '../../components/icons';
 import { useStore } from '../../store/useStore';
 import { api } from '../../api/client';
-import type { Lab, TodoItem } from '../../api/types';
+import { ARCHIVE } from '../../lib/archive';
+import type { TodoItem } from '../../api/types';
 
 const uid = () => 'todo' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(Number(Number(v).toPrecision(10))));
-const ABN = (r: Lab) => r.flag === 'H' || r.flag === 'L' || (r.value !== null && r.high !== null && r.value > r.high) || (r.value !== null && r.low !== null && r.value < r.low);
 
-const STATUS: Record<string, { label: string; tone: string }> = {
-  active: { label: '记录中', tone: 'pine' },
-  followup: { label: '待随访', tone: 'amber' },
-  monitor: { label: '监测中', tone: 'pine' },
-  history: { label: '历史记录', tone: 'mute' },
-  pending: { label: '待补充', tone: 'mute' },
+interface AIssueEvidence { type: string; text: string }
+interface AIssueFile { name: string; href: string; meta: string }
+interface AIssueTimeline { date: string; text: string }
+interface AIssue {
+  id: string; name: string; status: string; lastDate: string; lastLabel: string;
+  card?: string; head: string; evidence: AIssueEvidence[]; need: string; userNote?: string;
+  files: AIssueFile[]; timeline: AIssueTimeline[];
+}
+interface StatusMeta { label: string; tone: string }
+
+const ISSUES: AIssue[] = (ARCHIVE.issues ?? []) as unknown as AIssue[];
+const STATUSES: Record<string, StatusMeta> = (ARCHIVE.statuses ?? {}) as unknown as Record<string, StatusMeta>;
+
+const EVIDENCE_TAG: Record<string, string> = {
+  '医院报告': 'report',
+  '本人描述': 'self',
+  '建议计划': 'plan',
+  '辅助分析': 'analysis',
 };
+function tagClass(t: string) { return EVIDENCE_TAG[t] || 'analysis'; }
+function statusChip(status: string) {
+  const s = STATUSES[status] || { label: status, tone: 'mute' };
+  return <span className={`chip chip-sm tone-${s.tone}`}>{s.label}</span>;
+}
+
 const FOLLOW: Record<string, string> = { visit: '复诊', exam: '定期检查', lab: '复查化验', other: '其他' };
-
-interface Theme {
-  id: string;
-  name: string;
-  category: string;
-  status: string;
-  lastDate: string;
-  count: number;
-  abn: Lab[];
-}
-
-function buildThemes(labs: Lab[], overrides: Record<string, { status?: string; note?: string }>): Theme[] {
-  const byCat = new Map<string, Lab[]>();
-  for (const l of labs) {
-    const c = l.category || '未分类';
-    if (!byCat.has(c)) byCat.set(c, []);
-    byCat.get(c)!.push(l);
-  }
-  const themes: Theme[] = [];
-  for (const [cat, rows] of byCat) {
-    const lastDate = rows.reduce((m, r) => (r.date > m ? r.date : m), '');
-    const latest = rows.filter((r) => r.date === lastDate);
-    const abn = latest.filter(ABN);
-    const id = `lab-${cat}`;
-    const ov = overrides[id];
-    let status = abn.length ? 'followup' : 'monitor';
-    if (ov?.status && STATUS[ov.status]) status = ov.status;
-    themes.push({ id, name: cat, category: cat, status, lastDate, count: latest.length, abn });
-  }
-  return themes.sort((a, b) => (b.lastDate || '').localeCompare(a.lastDate || ''));
-}
 
 export function ThemesView({ go }: { go: (to: string) => void }) {
   const { data, reload } = useStore();
   const { setHead } = useHead();
-  const labs = data?.labs ?? [];
   const todos = data?.todoItems ?? [];
   const issueStatus = (data?.issueStatus ?? {}) as Record<string, { status?: string; note?: string }>;
   const done = (data?.done ?? {}) as Record<string, boolean>;
@@ -66,29 +51,45 @@ export function ThemesView({ go }: { go: (to: string) => void }) {
   const [statusDraft, setStatusDraft] = useState({ status: 'monitor', note: '' });
 
   useEffect(() => {
-    setHead({ title: '健康主题', sub: '医院报告、本人描述与辅助分析分开标注' });
+    setHead({
+      eyebrow: '',
+      title: '健康主题',
+      sub: `${ISSUES.length} 个主题　·　医院报告、本人描述与辅助分析分开标注`,
+      actions: (
+        <>
+          <a className="btn btn-ghost" href="#/labs-all">检验指标 →</a>
+          <button className="btn btn-primary" type="button" onClick={() => alert('新增主题：本版暂随静态档案维护，编辑请到「我的档案」或联系管理员。')}><Icon name="plus" />新增主题</button>
+        </>
+      ),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const themes = useMemo(() => buildThemes(labs, issueStatus), [labs, issueStatus]);
-  const counts: Record<string, number> = { '': themes.length };
-  themes.forEach((t) => (counts[t.status] = (counts[t.status] || 0) + 1));
-  const list = themes.filter((t) => !filter || t.status === filter);
-  const cur = themes.find((t) => t.id === sel) || list[0];
+  const effectiveStatus = (i: AIssue) => issueStatus[i.id]?.status && STATUSES[issueStatus[i.id].status!] ? issueStatus[i.id].status! : i.status;
 
-  // ---- 主题状态编辑 ----
-  const beginEdit = (t: Theme) => {
-    setStatusDraft({ status: t.status, note: issueStatus[t.id]?.note || '' });
-    setEditingStatus(true);
-  };
+  const counts: Record<string, number> = { '': ISSUES.length };
+  ISSUES.forEach((i) => { const s = effectiveStatus(i); counts[s] = (counts[s] || 0) + 1; });
+  const filters: [string, string, number][] = [
+    ['', '全部', counts[''] || 0],
+    ['active', '记录中', counts.active || 0],
+    ['followup', (STATUSES.followup?.label) || '待随访', counts.followup || 0],
+    ['monitor', '监测中', counts.monitor || 0],
+    ['history', '历史记录', counts.history || 0],
+    ['pending', '待补充', counts.pending || 0],
+    ['stub', '仅目录', counts.stub || 0],
+  ];
+  const list = ISSUES.filter((i) => !filter || effectiveStatus(i) === filter);
+  const cur = ISSUES.find((i) => i.id === sel) || list[0];
+
+  const beginEdit = (i: AIssue) => { setStatusDraft({ status: effectiveStatus(i), note: issueStatus[i.id]?.note || '' }); setEditingStatus(true); };
   const saveStatus = async () => {
-    const next = { ...issueStatus, [cur!.id]: { status: statusDraft.status, note: statusDraft.note, updatedAt: Date.now() } };
+    if (!cur) return;
+    const next = { ...issueStatus, [cur.id]: { status: statusDraft.status, note: statusDraft.note, updatedAt: Date.now() } };
     await api.putIssueStatus(next);
     await reload();
     setEditingStatus(false);
   };
 
-  // ---- 待办 ----
   const addTodo = async () => {
     if (!newTodo.trim()) return;
     const next: TodoItem[] = [...todos, { id: uid(), text: newTodo.trim(), groupName: '我新增的待办', meta: '', flag: '', createdAt: Date.now(), dueDate: '', followType: 'other' } as unknown as TodoItem];
@@ -96,47 +97,39 @@ export function ThemesView({ go }: { go: (to: string) => void }) {
     await reload();
     setNewTodo('');
   };
-  const toggleTodo = async (id: string) => {
-    const nextDone = { ...done, [id]: !done[id] };
-    await api.putState({ done: nextDone });
-    await reload();
-  };
-  const delTodo = async (id: string) => {
-    await api.putTable('todos', todos.filter((t) => t.id !== id));
-    await reload();
-  };
+  const toggleTodo = async (id: string) => { await api.putState({ done: { ...done, [id]: !done[id] } }); await reload(); };
+  const delTodo = async (id: string) => { await api.putTable('todos', todos.filter((t) => t.id !== id)); await reload(); };
 
   const openCount = todos.filter((t) => !done[t.id]).length;
 
   return (
     <div className="stack">
       <div className="filter-row">
-        {[['', '全部'], ['followup', '待随访'], ['monitor', '监测中'], ['history', '历史记录'], ['pending', '待补充']].map(([k, label]) => (
-          <button key={k} className={`filter-chip ${filter === k ? 'on' : ''}`} type="button" onClick={() => setFilter(k)}>{label} {counts[k] || 0}</button>
+        {filters.map(([k, label, n]) => (
+          <button key={k} className={`filter-chip ${filter === k ? 'on' : ''}`} type="button" onClick={() => setFilter(k)}>{label} {n}</button>
         ))}
-        <button className="btn btn-ghost" type="button" style={{ marginLeft: 'auto' }} onClick={() => go('labs-all')}>检验记录 →</button>
       </div>
 
-      <div className="issues-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: 'var(--sp-4)' }}>
+      <div className="issues-layout">
         <section className="card issue-list">
-          <div className="list-head" style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 4px' }}><span>{filter ? STATUS[filter]?.label : '全部主题'}</span><small style={{ color: 'var(--ink-4)' }}>按最近记录排序</small></div>
-          {list.length === 0 ? <p className="hint" style={{ padding: 10 }}>该筛选下暂无主题</p> : list.map((t) => (
-            <button key={t.id} className={`issue-item ${t.id === cur?.id ? 'on' : ''}`} type="button" onClick={() => { setSel(t.id); setEditingStatus(false); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '10px 8px', border: 'none', borderBottom: '1px solid var(--line-soft)', background: t.id === cur?.id ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer' }}>
-              <span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', background: t.status === 'followup' ? '#C58A2E' : t.status === 'monitor' ? 'var(--pine-600)' : 'var(--ink-5)', flex: '0 0 auto' }}></span>
-              <span className="nm" style={{ flex: 1 }}>{t.name}</span>
-              <span className="mt" style={{ color: 'var(--ink-4)', fontSize: 12 }}>{t.lastDate ? t.lastDate.slice(5) : '未记录'} · {t.abn.length ? '化验异常' : '化验结果'}</span>
+          <div className="list-head"><span>{filter ? (STATUSES[filter]?.label || '主题') : '全部主题'}</span><small>按最近记录排序</small></div>
+          {list.length === 0 ? <div className="empty" style={{ margin: 10 }}>该筛选下暂无主题</div> : list.map((i) => (
+            <button key={i.id} className={`issue-item ${i.id === cur?.id ? 'on' : ''}`} type="button" onClick={() => { setSel(i.id); setEditingStatus(false); }}>
+              <span className={`dot ${(STATUSES[effectiveStatus(i)]?.tone) || 'mute'}`}></span>
+              <span className="nm">{i.name}</span>
+              <span className="mt">{i.lastDate === '未记录' ? '未记录' : (i.lastDate || '').slice(5)} · {i.lastLabel}</span>
             </button>
           ))}
         </section>
 
         {cur ? (
           <section className="card issue-detail">
-            <div className="detail-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div className="detail-head">
               <div>
-                <h2 style={{ margin: '0 0 4px' }}>{cur.name} <span className="chip chip-sm">{STATUS[cur.status]?.label || cur.status}</span></h2>
-                <p className="meta" style={{ color: 'var(--ink-4)', margin: 0 }}>最近化验 {cur.lastDate || '未记录'} · 共 {cur.count} 项{cur.abn.length ? `，异常 ${cur.abn.length} 项` : ''}</p>
+                <h2>{cur.name} {statusChip(effectiveStatus(cur))}</h2>
+                <p className="meta">{cur.head}</p>
               </div>
-              <button className="btn-plain" type="button" onClick={() => beginEdit(cur)}>编辑状态 / 备注</button>
+              <button className="detail-edit chip ghost" type="button" onClick={() => beginEdit(cur)}>编辑状态 / 备注</button>
             </div>
 
             {editingStatus && (
@@ -144,7 +137,7 @@ export function ThemesView({ go }: { go: (to: string) => void }) {
                 <div className="form-grid">
                   <label className="field"><span>状态</span>
                     <select value={statusDraft.status} onChange={(e) => setStatusDraft((d) => ({ ...d, status: e.target.value }))}>
-                      {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      {Object.entries(STATUSES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
                   </label>
                   <label className="field"><span>我的备注</span><input value={statusDraft.note} onChange={(e) => setStatusDraft((d) => ({ ...d, note: e.target.value }))} /></label>
@@ -153,22 +146,41 @@ export function ThemesView({ go }: { go: (to: string) => void }) {
               </div>
             )}
 
-            <div className="divider" style={{ borderTop: '1px solid var(--line)', margin: '12px 0' }} />
-            <p className="block-label" style={{ fontSize: 12, color: 'var(--ink-4)' }}>证据与不确定性</p>
-            {cur.abn.length ? cur.abn.map((r) => (
-              <div className="evidence" key={r.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                <span className="tag report" style={{ color: '#B4553F' }}>医院报告</span>
-                <p style={{ margin: 0 }}>{r.date} {r.name} {num(r.value)}{r.unit}（参考 {r.low ?? '—'}–{r.high ?? '—'}）</p>
-              </div>
-            )) : (
-              <div className="evidence"><span className="tag analysis">辅助分析</span><p style={{ margin: 0 }}>{cur.lastDate} 该类别共 {cur.count} 项，均在参考范围内。</p></div>
-            )}
-            <div className="evidence"><span className="tag analysis" style={{ color: 'var(--ink-4)' }}>辅助分析</span><p style={{ margin: 0 }}>以上结论与异常标记由数据库化验记录自动生成，不是新增诊断，也不能替代医生解读。</p></div>
-
-            <div className="need-box" style={{ marginTop: 12, background: 'var(--bg-sunken)', borderRadius: 'var(--r-sm)', padding: 10 }}>
-              <b>仍需补充</b><p style={{ margin: '4px 0 0' }}>{cur.abn.length ? '携带最近报告复诊，听取医生对异常项的解释与处理建议；关注指标趋势。' : '定期复查；有新的报告时本结论会自动更新。'}</p>
+            <div className="divider" />
+            <div>
+              <p className="block-label">证据与不确定性</p>
+              {cur.evidence.map((e, idx) => (
+                <div className="evidence" key={idx}>
+                  <span className={`tag ${tagClass(e.type)}`}>{e.type}</span>
+                  <p>{e.text}</p>
+                </div>
+              ))}
             </div>
-            {issueStatus[cur.id]?.note ? <div className="need-box" style={{ marginTop: 8, background: '#F1ECE0', borderRadius: 'var(--r-sm)', padding: 10 }}><b>我的备注</b><p style={{ margin: '4px 0 0' }}>{issueStatus[cur.id].note}</p></div> : null}
+            <div className="need-box"><b>仍需补充</b><p>{cur.need}</p></div>
+            {(issueStatus[cur.id]?.note || cur.userNote) ? (
+              <div className="need-box" style={{ background: '#F1ECE0' }}><b>我的备注</b><p>{issueStatus[cur.id]?.note || cur.userNote}</p></div>
+            ) : null}
+            {cur.files.length ? (
+              <div>
+                <p className="block-label">关联资料</p>
+                {cur.files.map((f, idx) => (
+                  <a className="file-row" key={idx} href={f.href}><Icon name="file" /><span>{f.name}</span><span className="fm">{f.meta}</span></a>
+                ))}
+              </div>
+            ) : null}
+            {cur.timeline.length ? (
+              <div>
+                <p className="block-label">近期检查</p>
+                {cur.timeline.map((t, idx) => (
+                  <div className="tl-row" key={idx}><time>{t.date}</time><p>{t.text}</p></div>
+                ))}
+              </div>
+            ) : null}
+            <div className="detail-actions">
+              <button className="btn btn-primary" type="button" onClick={() => go('daily')}>记录一次</button>
+              <button className="btn btn-ghost" type="button" onClick={() => void saveStatus()}>标记为已复诊</button>
+              <span className="hint" style={{ alignSelf: 'center' }}>勾选只同步待办清单，不改变病历文件</span>
+            </div>
           </section>
         ) : <section className="card empty"><p className="hint">请选择一个主题</p></section>}
       </div>
