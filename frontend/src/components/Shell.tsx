@@ -30,6 +30,7 @@ function activeNav(name: string): string {
   if (name === 'labs' || name === 'labs-all' || name === 'metrics') return 'metrics';
   if (name === 'theme' || name === 'themes') return 'themes';
   if (name === 'summary' || name === 'me') return 'me';
+  if (name === 'about') return 'settings';
   return name;
 }
 
@@ -55,6 +56,13 @@ export function Shell({ route, go, children }: { route: Route; go: (to: string) 
       alive = false;
     };
   }, []);
+
+  // 设置页隐藏通用页头（老版做法：body.settings-mode 时 .page-head{display:none}）
+  useEffect(() => {
+    const on = route.name === 'settings' || route.name === 'about';
+    document.body.classList.toggle('settings-mode', on);
+    return () => { document.body.classList.remove('settings-mode'); };
+  }, [route.name]);
 
   const mainNav = NAV.filter((n) => !n.bottom);
   const bottomNav = NAV.filter((n) => n.bottom);

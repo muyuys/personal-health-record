@@ -9,6 +9,8 @@ import { useStore } from '../../store/useStore';
 import { getActiveProfile } from '../../api/profile';
 import { api } from '../../api/client';
 import { RecCard } from './RecCard';
+import { useReportModal } from '../reports/ReportModal';
+import { useMedModal } from '../meds/MedModal';
 import {
   REC_TYPES,
   filterEvents,
@@ -27,13 +29,33 @@ interface Props {
   go: (to: string) => void;
   onOpenVisit: (id: string) => void;
   onNewVisit: () => void;
-  onNewReport: () => void;
   flash?: { kind: string; id: string } | null;
 }
 
-export function RecordsView({ go, onOpenVisit, onNewVisit, onNewReport, flash }: Props) {
+export function RecordsView({ go, onOpenVisit, onNewVisit, flash }: Props) {
   const { setHead } = useHead();
   const { data, loading, error, reload } = useStore();
+  const openReport = useReportModal();
+  const openMed = useMedModal();
+
+  const goMetric = (name: string) => {
+    void name;
+    go('metrics');
+  };
+  const openReportView = (id: string) => {
+    const rep = data?.reports.find((r) => r.id === id) || null;
+    if (rep) openReport({ mode: 'view', report: rep, onSaved: () => void reload(), onDeleted: () => void reload(), goMetric });
+  };
+  const openReportNew = () => {
+    openReport({ mode: 'edit', onSaved: () => void reload() });
+  };
+  const openMedView = (id: string) => {
+    const med = data?.medications.find((m) => m.id === id) || null;
+    if (med) openMed({ mode: 'view', med, onSaved: () => void reload(), onDeleted: () => void reload() });
+  };
+  const openMedNew = () => {
+    openMed({ mode: 'edit', onSaved: () => void reload() });
+  };
 
   const [q, setQ] = useState<RecordsQuery>({ t: 'all', q: '', from: '', to: '', p: 1 });
   const [panelOpen, setPanelOpen] = useState(false);
@@ -81,7 +103,7 @@ export function RecordsView({ go, onOpenVisit, onNewVisit, onNewReport, flash }:
           >
             <Icon name="search" />
           </button>
-          <button className="btn btn-secondary" type="button" onClick={onNewReport}>
+          <button className="btn btn-secondary" type="button" onClick={openReportNew}>
             <Icon name="file" />
             存一份报告
           </button>
@@ -138,8 +160,8 @@ export function RecordsView({ go, onOpenVisit, onNewVisit, onNewReport, flash }:
 
   const openEvent = (ev: RecEvent) => {
     if (ev.kind === 'visit') onOpenVisit(ev.id);
-    else if (ev.kind === 'med') go('meds');
-    else if (ev.kind === 'report') go('reports');
+    else if (ev.kind === 'med') openMedView(ev.id);
+    else if (ev.kind === 'report') openReportView(ev.id);
     else if (ev.kind === 'lab') go('labs-all');
   };
 
@@ -235,7 +257,7 @@ export function RecordsView({ go, onOpenVisit, onNewVisit, onNewReport, flash }:
 
       <div id="recList">
         {isEmpty ? (
-          <RecordsEmpty q={q} countsAny={countsAny} filtered={filtered} onNewVisit={onNewVisit} onNewReport={onNewReport} onClear={() => setQ((s) => ({ ...s, q: '', from: '', to: '', p: 1 }))} go={go} />
+          <RecordsEmpty q={q} countsAny={countsAny} filtered={filtered} onNewVisit={onNewVisit} onNewReport={openReportNew} onNewMed={openMedNew} onClear={() => setQ((s) => ({ ...s, q: '', from: '', to: '', p: 1 }))} />
         ) : (
           <div
             className="rec-group-wrap"
@@ -301,16 +323,16 @@ function RecordsEmpty({
   filtered,
   onNewVisit,
   onNewReport,
+  onNewMed,
   onClear,
-  go,
 }: {
   q: RecordsQuery;
   countsAny: boolean;
   filtered: boolean;
   onNewVisit: () => void;
   onNewReport: () => void;
+  onNewMed: () => void;
   onClear: () => void;
-  go: (to: string) => void;
 }) {
   if (countsAny && filtered) {
     return (
@@ -363,7 +385,7 @@ function RecordsEmpty({
         <p className="es-title">还没记过用药</p>
         <p className="es-desc">药名和当前状态就能先存一条，剂量和频次可以以后补。</p>
         <div className="es-actions" style={{ justifyContent: 'center' }}>
-          <button className="btn btn-primary" type="button" onClick={() => go('meds')}>
+          <button className="btn btn-primary" type="button" onClick={onNewMed}>
             <Icon name="plus" />
             记一次用药
           </button>
