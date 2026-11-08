@@ -1,6 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from './icons';
 import { useHead } from './head';
+import { getActiveProfile } from '../api/profile';
+import { api } from '../api/client';
 import type { Route } from '../store/useRoute';
 
 // 一级导航（对齐 js/app.views.health.js NAV）
@@ -34,7 +36,25 @@ function activeNav(name: string): string {
 export function Shell({ route, go, children }: { route: Route; go: (to: string) => void; children: ReactNode }) {
   const { head } = useHead();
   const [collapsed, setCollapsed] = useState(true);
+  const [memberName, setMemberName] = useState('我的档案');
   const active = activeNav(route.name);
+
+  useEffect(() => {
+    let alive = true;
+    const pid = getActiveProfile();
+    api.ai
+      .profiles()
+      .then((res) => {
+        if (!alive) return;
+        const pidNow = getActiveProfile();
+        const m = (res.profiles as any[]).find((p) => p.id === pidNow) || (res.profiles as any[]).find((p) => p.id === pid);
+        setMemberName(m?.name || (pidNow === 'default' ? '我的档案' : '成员档案'));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const mainNav = NAV.filter((n) => !n.bottom);
   const bottomNav = NAV.filter((n) => n.bottom);
@@ -59,7 +79,7 @@ export function Shell({ route, go, children }: { route: Route; go: (to: string) 
             <BrandMark />
             <span className="brand-t">
               <b>健康档案</b>
-              <span>我的个人健康记录</span>
+              <span>{memberName}</span>
             </span>
           </a>
           <button

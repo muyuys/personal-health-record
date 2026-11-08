@@ -17,6 +17,8 @@ import { ThemesView } from './features/themes/ThemesView';
 import { MeView } from './features/me/MeView';
 import { SettingsView } from './features/settings/SettingsView';
 import { AssistantView } from './features/assistant/AssistantView';
+import { MembersView } from './features/members/MembersView';
+import { AboutView } from './features/about/AboutView';
 import type { Visit } from './api/types';
 
 function Views() {
@@ -80,6 +82,10 @@ function Views() {
         return <AssistantView go={go} />;
       case 'settings':
         return <SettingsView go={go} />;
+      case 'members':
+        return <MembersView go={go} />;
+      case 'about':
+        return <AboutView go={go} />;
       case 'me':
         return <MeView go={go} />;
       default:

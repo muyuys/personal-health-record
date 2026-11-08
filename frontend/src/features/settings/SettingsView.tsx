@@ -83,12 +83,20 @@ export function SettingsView({ go }: { go: (to: string) => void }) {
       <section className="card">
         <div className="card-head"><h2>常规</h2><p className="hint" style={{ margin: 0 }}>应用访问与档案管理。</p></div>
         <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--line-soft)' }}>
+          <div><b>成员管理</b><p className="hint" style={{ margin: 0 }}>添加家庭成员或切换当前查看的档案。</p></div>
+          <button className="btn-plain" type="button" onClick={() => go('members')}>管理 →</button>
+        </div>
+        <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--line-soft)' }}>
           <div><b>个人资料</b><p className="hint" style={{ margin: 0 }}>查看与完善当前成员的基础信息。</p></div>
           <button className="btn-plain" type="button" onClick={() => go('me')}>查看 →</button>
         </div>
-        <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0' }}>
+        <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--line-soft)' }}>
           <div><b>健康主题与待办</b><p className="hint" style={{ margin: 0 }}>按问题归拢的健康线索与提醒。</p></div>
           <button className="btn-plain" type="button" onClick={() => go('themes')}>查看 →</button>
+        </div>
+        <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0' }}>
+          <div><b>关于</b><p className="hint" style={{ margin: 0 }}>版本信息与更新记录。</p></div>
+          <button className="btn-plain" type="button" onClick={() => go('about')}>查看 →</button>
         </div>
       </section>
 

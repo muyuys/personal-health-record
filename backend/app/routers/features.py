@@ -69,6 +69,15 @@ def profiles():
     return {"profiles": _profiles()}
 
 
+@router.post("/profiles")
+def save_profile(data: dict = Body(...)):
+    """新增 / 编辑成员（与旧 featureAPI('/profiles', values) 对齐）。"""
+    try:
+        return hf.save_member(data)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get("/ai/status")
 def ai_status(request: Request):
     pid = _scope_from(request)

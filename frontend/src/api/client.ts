@@ -3,12 +3,17 @@
 // 调用方必须 await 到真实结果，失败抛错——不再「发起即返回 true」。
 
 import { ConflictError, type Visit, type WriteResult, type Snapshot, type OriginalsItem } from './types';
+import { profileHeaders, withProfileQuery } from './profile';
 
 const BASE = ''; // 走 vite 代理同源；如需跨域可在 vite.config.ts 配 proxy
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...profileHeaders(),
+      ...(init?.headers || {}),
+    },
     ...init,
   });
   if (res.status === 409) {
@@ -55,7 +60,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  exportUrl: () => BASE + '/api/export',
+  exportUrl: () => withProfileQuery(BASE + '/api/export'),
 
   // 整表替换：键名与后端路由一一对应
   putTable: <T = unknown>(table: string, rows: T[]) =>
@@ -98,5 +103,7 @@ export const api = {
       }),
     mcpConfig: () => request<any>('/api/mcp/config'),
     profiles: () => request<{ profiles: any[] }>('/api/profiles'),
+    saveProfile: (data: { id?: string; name: string; relation?: string }) =>
+      request<any>('/api/profiles', { method: 'POST', body: JSON.stringify(data) }),
   },
 };

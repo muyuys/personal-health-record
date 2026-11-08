@@ -6,16 +6,18 @@
 - 写请求带 expected_revision，版本不一致返回 409（不静默覆盖）；
 - 每次成功写 revision += 1；
 - 所有列映射与 health_server.replace_history 的 visit 写入保持一致。
+- 按成员隔离：profile_scope 依赖切换 db 的 _profile_scope 后 connect() 指向成员库。
 """
 from __future__ import annotations
 
 import time
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..db import connect, _db_lock
 from ..models import Visit, VisitCreate, VisitUpdate, WriteResult
+from ..deps import profile_context, resolve_profile
 
 router = APIRouter(prefix="/api/visits", tags=["visits"])
 
@@ -39,15 +41,15 @@ def _row_to_visit(r) -> Visit:
 
 
 @router.get("", response_model=list[Visit])
-def list_visits():
-    with _db_lock, connect() as c:
+def list_visits(pid: str = Depends(resolve_profile)):
+    with profile_context(pid), _db_lock, connect() as c:
         rows = c.execute("SELECT * FROM visit ORDER BY date DESC, created_at DESC").fetchall()
         return [_row_to_visit(r) for r in rows]
 
 
 @router.get("/{vid}", response_model=Visit)
-def get_visit(vid: str):
-    with _db_lock, connect() as c:
+def get_visit(vid: str, pid: str = Depends(resolve_profile)):
+    with profile_context(pid), _db_lock, connect() as c:
         r = c.execute("SELECT * FROM visit WHERE id=?", (vid,)).fetchone()
         if not r:
             raise HTTPException(404, "就诊记录不存在")
@@ -55,10 +57,10 @@ def get_visit(vid: str):
 
 
 @router.post("", response_model=WriteResult, status_code=201)
-def create_visit(body: VisitCreate):
+def create_visit(body: VisitCreate, pid: str = Depends(resolve_profile)):
     vid = "vis-" + uuid.uuid4().hex[:12]
     created = int(time.time() * 1000)
-    with _db_lock, connect() as c:
+    with profile_context(pid), _db_lock, connect() as c:
         c.execute(
             """INSERT INTO visit (id,date,visit_type,department,hospital,doctor,
                chief,diagnosis,summary,report_id,note,created_at,revision)
@@ -71,8 +73,8 @@ def create_visit(body: VisitCreate):
 
 
 @router.put("/{vid}", response_model=WriteResult)
-def update_visit(vid: str, body: VisitUpdate):
-    with _db_lock, connect() as c:
+def update_visit(vid: str, body: VisitUpdate, pid: str = Depends(resolve_profile)):
+    with profile_context(pid), _db_lock, connect() as c:
         r = c.execute("SELECT * FROM visit WHERE id=?", (vid,)).fetchone()
         if not r:
             raise HTTPException(404, "就诊记录不存在")
@@ -99,8 +101,8 @@ def _conflict(cur_rev: int, current: dict):
 
 
 @router.delete("/{vid}", status_code=204)
-def delete_visit(vid: str, expected_revision: int = Query(...)):
-    with _db_lock, connect() as c:
+def delete_visit(vid: str, expected_revision: int = Query(...), pid: str = Depends(resolve_profile)):
+    with profile_context(pid), _db_lock, connect() as c:
         r = c.execute("SELECT revision FROM visit WHERE id=?", (vid,)).fetchone()
         if not r:
             raise HTTPException(404, "就诊记录不存在")
