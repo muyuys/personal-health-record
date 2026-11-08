@@ -6,7 +6,96 @@
 // 体重/体征/症状/睡眠属于「日常健康」，不进这条时间线。
 import type { Snapshot, Visit, Report, Lab, Medication } from '../../api/types';
 
-export type EventKind = 'visit' | 'report' | 'lab' | 'med';
+// ===== 首页「最近记录」用的完整事件流（含日常健康）=====
+const VITAL_METRICS: { k: keyof import('../../api/types').Vital; label: string; unit: string }[] = [
+  { k: 'systolic', label: '收缩压', unit: 'mmHg' },
+  { k: 'diastolic', label: '舒张压', unit: 'mmHg' },
+  { k: 'pulse', label: '心率', unit: '次/分' },
+  { k: 'temperature', label: '体温', unit: '℃' },
+  { k: 'spo2', label: '血氧饱和度', unit: '%' },
+  { k: 'glucose', label: '血糖', unit: 'mmol/L' },
+];
+
+function kg1(n: unknown): string {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '';
+  return (Math.round(v * 10) / 10).toString();
+}
+
+/** 完整事件流：对齐旧 recentStream（含体重/体征/症状/睡眠），用于首页最近记录 */
+export function fullStream(data: Snapshot): RecEvent[] {
+  const ev: RecEvent[] = medicalStream(data);
+
+  data.weights.forEach((w) =>
+    ev.push({
+      id: w.id,
+      kind: 'weight',
+      date: w.date || '',
+      createdAt: 0,
+      chip: '体重',
+      title: '体重',
+      summary: `${kg1(w.kg)} kg`,
+      meta: '日常健康 · 体重与饮食',
+      href: '#/daily?seg=body',
+    }),
+  );
+  data.vitals.forEach((v: any) => {
+    const parts = VITAL_METRICS.filter((m) => Number.isFinite(v[m.k])).map(
+      (m) => `${m.label} ${v[m.k]}${m.unit}`,
+    );
+    ev.push({
+      id: v.id,
+      kind: 'vital',
+      date: v.date || '',
+      createdAt: v.createdAt || 0,
+      chip: '体征',
+      title: '体征',
+      summary: parts.join('　'),
+      meta: '日常健康 · 血压等体征',
+      href: '#/daily?seg=vitals',
+    });
+  });
+  data.symptoms.forEach((s) =>
+    ev.push({
+      id: s.id,
+      kind: 'symptom',
+      date: s.date || '',
+      createdAt: s.createdAt || 0,
+      chip: '症状',
+      title: s.part || '症状',
+      summary: String(s.note || '').trim(),
+      meta: '日常健康 · 症状',
+      href: '#/daily?seg=symptoms',
+    }),
+  );
+  data.sleepLogs.forEach((s) => {
+    const hrs = [s.bedtime, s.wake].filter(Boolean).length === 2 ? `${s.bedtime} → ${s.wake}` : '';
+    const h = Number(s.hours);
+    ev.push({
+      id: s.id,
+      kind: 'sleep',
+      date: s.date || '',
+      createdAt: s.createdAt || 0,
+      chip: '睡眠',
+      title: '睡眠',
+      summary: [hrs, Number.isFinite(h) ? `${h.toFixed(1)} 小时` : '', String(s.note || '').trim()]
+        .filter(Boolean)
+        .join('　'),
+      meta: '日常健康 · 睡眠',
+      href: '#/daily?seg=sleep',
+    });
+  });
+
+  return ev;
+}
+
+/** 首页「最近记录」：取最近 3 条（有日期的倒序在前，无日期的置顶一条） */
+export function homeRecent(data: Snapshot, n = 3): RecEvent[] {
+  const { dated, undated } = recentSorted(fullStream(data));
+  return (undated.length ? [undated[0]] : []).concat(dated).slice(0, n);
+}
+
+export type EventKind = 'visit' | 'report' | 'lab' | 'med' | 'weight' | 'vital' | 'symptom' | 'sleep';
 
 export interface RecEvent {
   id: string;

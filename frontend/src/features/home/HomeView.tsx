@@ -1,16 +1,29 @@
+// 首页：复刻旧前端 renderHome（js/app.views.records.js:325）。
+// 结构：危急过敏横幅 → 三张快捷卡 → 接下来要做（todo 行）→ 最近记录（RecCard 紧凑）。
 import { useEffect } from 'react';
 import { useHead } from '../../components/head';
 import { Icon } from '../../components/icons';
 import { useStore } from '../../store/useStore';
+import { RecCard } from '../records/RecCard';
+import { homeRecent, type RecEvent } from '../records/recordsEvents';
+import { TodoRow } from '../common/TodoRow';
+import { nextUpTodos, openTodos, overdueCount } from '../../lib/todos';
+import { api } from '../../api/client';
+import type { Allergy } from '../../api/types';
 
-// 首页：从全量快照聚合「接下来要做 / 最近记录」，对齐旧 renderHome 的意图。
 export function HomeView({ go }: { go: (to: string) => void }) {
   const { setHead } = useHead();
-  const { data, loading, error, reload } = useStore();
+  const { data, loading, error, reload, setData } = useStore();
 
-  // 最近更新日期：取各表最大 date
   const lastDate = data
-    ? [data.visits, data.labs, data.vitals, data.symptoms, data.sleepLogs, data.weights]
+    ? [
+        data.visits,
+        data.labs,
+        data.vitals,
+        data.symptoms,
+        data.sleepLogs,
+        data.weights,
+      ]
         .flat()
         .map((x: any) => x?.date)
         .filter(Boolean)
@@ -20,13 +33,19 @@ export function HomeView({ go }: { go: (to: string) => void }) {
 
   useEffect(() => {
     setHead({
+      eyebrow: '',
       title: '健康档案',
       sub: lastDate ? `最近更新 ${lastDate}　·　数据存在本机，随时可以补` : '从第一次记录开始',
       actions: (
-        <button className="btn btn-primary" type="button" onClick={() => go('new-visit')}>
-          <Icon name="plus" />
-          记一笔
-        </button>
+        <>
+          <button className="icon-btn" type="button" aria-label="搜索档案" onClick={() => go('records')}>
+            <Icon name="search" />
+          </button>
+          <button className="btn btn-primary" type="button" onClick={() => go('new-visit')}>
+            <Icon name="plus" />
+            记一笔
+          </button>
+        </>
       ),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,41 +63,89 @@ export function HomeView({ go }: { go: (to: string) => void }) {
     );
   if (!data) return null;
 
-  const openTodos = data.todoItems.length;
-  const recentVisits = [...data.visits].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 3);
+  const critical: Allergy[] = data.allergies.filter((a) => a.severity === 'critical');
+  const tasks = nextUpTodos(data, 5);
+  const recent = homeRecent(data, 3);
+  const openCount = openTodos(data).length;
+  const overdue = overdueCount(data);
+
+  const toggleTodo = async (id: string) => {
+    const done = { ...data.done, [id]: !data.done[id] };
+    setData((prev) => ({ ...prev, done }));
+    try {
+      await api.putState({ done });
+    } catch {
+      void reload();
+    }
+  };
+
+  const openEvent = (ev: RecEvent) => {
+    if (ev.href) {
+      const target = ev.href.replace(/^#\//, '');
+      go(target);
+    }
+  };
 
   return (
     <div className="stack home-layout">
+      {critical.length > 0 && (
+        <section className="allergy-alert">
+          <Icon name="info" />
+          <div>
+            <b>危急过敏 · 就诊、用药前请告知医生</b>
+            <p>
+              {critical
+                .map(
+                  (a) =>
+                    `${a.name}（${a.category || '未分类'}${a.reaction ? '：' + a.reaction : ''}）`,
+                )
+                .join('；')}
+            </p>
+            <button className="band-link" type="button" onClick={() => go('me')}>
+              查看过敏信息 →
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="grid-quick home-shortcuts" aria-label="快捷记录">
         <button className="quick-card quick-card--accent" type="button" onClick={() => go('new-visit')}>
           <span className="qc-icon"><Icon name="plus" /></span>
-          <span className="qc-body"><span className="qc-title">记一次就诊</span><span className="qc-desc">日期 + 一段记录</span></span>
+          <span className="qc-body">
+            <span className="qc-title">记一次就诊</span>
+            <span className="qc-desc">日期 + 一段记录</span>
+          </span>
         </button>
         <button className="quick-card" type="button" onClick={() => go('new-report')}>
           <span className="qc-icon"><Icon name="file" /></span>
-          <span className="qc-body"><span className="qc-title">存一份报告</span><span className="qc-desc">先保存原件</span></span>
+          <span className="qc-body">
+            <span className="qc-title">存一份报告</span>
+            <span className="qc-desc">先保存原件</span>
+          </span>
         </button>
         <button className="quick-card" type="button" onClick={() => go('daily')}>
           <span className="qc-icon"><Icon name="pulse" /></span>
-          <span className="qc-body"><span className="qc-title">记日常数据</span><span className="qc-desc">体重、血压、症状、睡眠</span></span>
-        </button>
-        <button className="quick-card" type="button" onClick={() => go('meds')}>
-          <span className="qc-icon"><Icon name="check" /></span>
-          <span className="qc-body"><span className="qc-title">用药记录</span><span className="qc-desc">剂量、频次、起止</span></span>
-        </button>
-        <button className="quick-card" type="button" onClick={() => go('reports')}>
-          <span className="qc-icon"><Icon name="file" /></span>
-          <span className="qc-body"><span className="qc-title">报告档案</span><span className="qc-desc">查看已存原件</span></span>
+          <span className="qc-body">
+            <span className="qc-title">记日常数据</span>
+            <span className="qc-desc">体重、血压、症状、睡眠</span>
+          </span>
         </button>
       </section>
 
-      {openTodos > 0 && (
+      {tasks.length > 0 && (
         <section className="home-next">
           <div className="section-head" style={{ marginTop: 0 }}>
             <h2>接下来要做</h2>
             <button className="btn-plain" type="button" onClick={() => go('themes')}>
-              全部 {openTodos} 项 →
+              全部 {openCount} 项
+              {overdue > 0 && <span className="rdot" role="img" aria-label={`其中 ${overdue} 项已过期`} />}
+              {' →'}
             </button>
+          </div>
+          <div className="card" style={{ padding: 'var(--sp-2) var(--sp-4)' }}>
+            {tasks.map((t) => (
+              <TodoRow key={t.id} todo={t} done={!!data.done[t.id]} onToggle={toggleTodo} />
+            ))}
           </div>
         </section>
       )}
@@ -90,19 +157,10 @@ export function HomeView({ go }: { go: (to: string) => void }) {
             查看全部 →
           </button>
         </div>
-        {recentVisits.length ? (
+        {recent.length ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-            {recentVisits.map((v) => (
-              <button key={v.id} type="button" className="card" style={{ textAlign: 'left', cursor: 'pointer', width: '100%' }} onClick={() => go('visit/' + v.id)}>
-                <div className="row-main">
-                  <p className="row-title" style={{ fontWeight: 600 }}>
-                    {v.hospital || `${v.visitType || '门诊'}就诊`}
-                    {v.department ? `　·　${v.department}` : ''}
-                  </p>
-                  <p className="row-sub"><span className="ts">{v.date || '日期未记'}</span>{v.doctor ? `　·　${v.doctor}` : ''}</p>
-                  <p className="row-sub" style={{ marginTop: 6 }}>{v.diagnosis || v.chief || '（无诊断 / 主诉）'}</p>
-                </div>
-              </button>
+            {recent.map((e) => (
+              <RecCard key={e.kind + ':' + (e.id || e.date + e.title)} ev={e} onOpen={openEvent} compact />
             ))}
           </div>
         ) : (
