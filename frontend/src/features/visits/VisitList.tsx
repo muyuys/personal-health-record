@@ -32,12 +32,6 @@ export function VisitList({ flashId, onOpen, onNew }: Props) {
         <span className="page-sub">
           {items.length ? `共 ${items.length} 条就诊记录` : '还没有就诊记录'}
         </span>
-        <div className="seg-tools">
-          <button className="btn btn-primary" type="button" onClick={onNew}>
-            <PlusIcon />
-            记一次就诊
-          </button>
-        </div>
       </div>
 
       {items.length === 0 ? (
