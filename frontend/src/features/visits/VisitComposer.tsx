@@ -65,57 +65,84 @@ export function VisitComposer({ edit, onCancel, onSaved }: Props) {
     }
   };
 
-  const Row = ({ label, k, textarea }: { label: string; k: keyof Draft; textarea?: boolean }) => (
-    <div style={{ marginBottom: 10 }}>
-      <label style={{ display: 'block', fontSize: 12, color: '#555', marginBottom: 4 }}>
+  const Field = ({
+    label,
+    k,
+    req,
+    textarea,
+    type,
+    placeholder,
+  }: {
+    label: string;
+    k: keyof Draft;
+    req?: boolean;
+    textarea?: boolean;
+    type?: string;
+    placeholder?: string;
+  }) => (
+    <div className="field">
+      <label htmlFor={`f-${k}`}>
         {label}
+        {req && <b className="field-req">（必填）</b>}
       </label>
       {textarea ? (
         <textarea
+          id={`f-${k}`}
           value={draft[k]}
           onChange={(e) => set(k, e.target.value)}
-          rows={2}
-          style={{ width: '100%', boxSizing: 'border-box' }}
+          rows={3}
+          placeholder={placeholder}
         />
       ) : (
         <input
+          id={`f-${k}`}
+          type={type || 'text'}
           value={draft[k]}
           onChange={(e) => set(k, e.target.value)}
-          style={{ width: '100%', boxSizing: 'border-box' }}
+          placeholder={placeholder}
         />
       )}
     </div>
   );
 
   return (
-    <div>
-      <h2 style={{ fontSize: 17 }}>{edit ? '编辑就诊' : '记一次就诊'}</h2>
-
-      <Row label="就诊日期（必填）" k="date" />
-      <Row label="就诊类型" k="visitType" />
-      <Row label="科室" k="department" />
-      <Row label="医院" k="hospital" />
-      <Row label="医生" k="doctor" />
-      <Row label="主诉" k="chief" />
-      <Row label="诊断" k="diagnosis" />
-      <Row label="小结" k="summary" textarea />
-      <Row label="备注" k="note" textarea />
-      <Row label="关联报告 id" k="reportId" />
-
-      {error && (
-        <div style={{ color: '#b00', margin: '8px 0' }} role="alert">
-          {error}
+    <div className="stack">
+      <section className="card">
+        <div className="card-head">
+          <h2>{edit ? '编辑就诊记录' : '记一次就诊'}</h2>
         </div>
-      )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <button onClick={() => void onSave()} disabled={saving}>
-          {saving ? '保存中…' : '保存记录'}
-        </button>
-        <button onClick={onCancel} disabled={saving}>
-          取消
-        </button>
-      </div>
+        <div className="form-grid">
+          <Field label="就诊日期" k="date" req type="date" />
+          <Field label="就诊类型" k="visitType" placeholder="门诊 / 急诊 / 住院 / 复查" />
+          <Field label="科室" k="department" placeholder="心内科、内分泌科…" />
+          <Field label="医院" k="hospital" placeholder="医院名称" />
+          <Field label="接诊医生" k="doctor" placeholder="医生姓名" />
+          <Field label="关联报告 id" k="reportId" placeholder="可选，报告 id" />
+        </div>
+
+        <div className="form-grid" style={{ gridTemplateColumns: '1fr', marginTop: 'var(--sp-4)' }}>
+          <Field label="主诉" k="chief" placeholder="这次为什么去看病" />
+          <Field label="明确诊断" k="diagnosis" placeholder="医生给出的诊断" />
+          <Field label="小结（就诊记录）" k="summary" textarea placeholder="这次看病的经过与结论，写一句就能保存" />
+          <Field label="医嘱 / 备注" k="note" textarea placeholder="医嘱、注意事项…" />
+        </div>
+
+        {error && (
+          <div className="notice notice--danger" role="alert" style={{ marginTop: 'var(--sp-4)' }}>
+            {error}
+          </div>
+        )}
+
+        <div className="form-actions">
+          <button className="btn btn-primary" type="button" onClick={() => void onSave()} disabled={saving}>
+            {saving ? '保存中…' : '保存记录'}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={onCancel} disabled={saving}>
+            取消
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
