@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>空数据走查 · 健康档案</title>
+<style>
+  :root{
+    --paper:#F2EFE8; --card:#FFFDF8; --ink:#1B241F; --pine:#173F33; --green:#2F6B57;
+    --line:#E8E2D6; --muted:#5C6560; --muted-3:#8C948C; --warn:#B9583C; --amber:#A9752F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:14px;line-height:1.75;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:"Noto Serif SC","Songti SC","Source Han Serif SC",serif;font-weight:600;letter-spacing:.01em}
+  a{color:var(--green)}
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 32px 96px}
+  header{margin-bottom:44px}
+  .eyebrow{font-family:Inter,ui-monospace,monospace;font-size:11px;letter-spacing:.18em;color:var(--muted-3);text-transform:uppercase;margin:0 0 10px}
+  h1{font-size:38px;margin:0 0 12px;line-height:1.25}
+  .lede{max-width:64ch;color:var(--muted);margin:0}
+  .rule{height:1px;background:var(--line);margin:36px 0}
+
+  .verdict{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 8px}
+  .vcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .vcard small{display:block;font-size:11px;letter-spacing:.14em;color:var(--muted-3);margin-bottom:6px}
+  .vcard b{font-family:"Noto Serif SC",serif;font-size:17px;display:block;margin-bottom:4px}
+  .vcard p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.7}
+
+  h2{font-size:23px;margin:52px 0 6px}
+  .sub{color:var(--muted);margin:0 0 22px;font-size:13px}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
+  figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  figure img{display:block;width:100%;height:auto;border-bottom:1px solid var(--line)}
+  figcaption{padding:12px 16px 15px;font-size:12.5px;color:var(--muted)}
+  figcaption b{display:block;font-size:13px;color:var(--ink);margin-bottom:2px;font-weight:600}
+  .wide{grid-column:1/-1}
+  .half{max-width:420px}
+
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:12.8px}
+  th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#F7F4EC;font-weight:600;font-size:11.5px;letter-spacing:.06em;color:var(--muted)}
+  tr:last-child td{border-bottom:none}
+  td.k{white-space:nowrap;font-weight:600}
+  .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag.ok{color:var(--green);border-color:#CBDCD2;background:#F1F7F3}
+  .tag.fix{color:var(--warn);border-color:#EBD3CA;background:#FBF3F0}
+  .tag.thin{color:var(--amber);border-color:#EADFC6;background:#FBF7EE}
+
+  ol.changes{margin:0;padding-left:20px;color:var(--muted)}
+  ol.changes li{margin-bottom:10px}
+  ol.changes b{color:var(--ink)}
+  code{font-family:Inter,ui-monospace,monospace;font-size:12px;background:#EDE9DE;padding:1px 5px;border-radius:4px}
+  footer{margin-top:56px;color:var(--muted-3);font-size:12px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}.verdict{grid-template-columns:1fr}.wrap{padding:36px 18px 72px}h1{font-size:28px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Empty state review · 2026-11-01</p>
+  <h1>没有数据的时候，这个项目长什么样</h1>
+  <p class="lede">用一份空数据库（临时库，没碰 <code>data/health.db</code>）把 15 个页面全跑了一遍，再把手写的档案底稿 <code>assets/data.js</code> 也清空跑了一遍。结论是：这个项目有两层「没数据」，它们的样子完全不同。</p>
+</header>
+
+<div class="verdict">
+  <div class="vcard">
+    <small>第一层 · 存储空</small>
+    <b>库空，档案还在</b>
+    <p>检验、体重、睡眠、体征、症状、饮食这些「记录型」页面全空，但总览、健康问题、时间线、用药、待办、个人资料仍有内容 —— 它们来自 <code>data.js</code> 里手写的档案，不来自数据库。</p>
+  </div>
+  <div class="vcard">
+    <small>第二层 · 档案也空</small>
+    <b>真正的一张白纸</b>
+    <p>15 个页面都能打开、都有空态文案。改之前总览和减重页会整页崩（缺「长期目标」时 <code>toFixed</code> 报错），而且崩完页面还停在上一页，什么都不说。</p>
+  </div>
+  <div class="vcard">
+    <small>顺手修掉的</small>
+    <b>不再凭空造记录</b>
+    <p>库空的时候，原来会用档案里的「起点体重」补一条看起来像实测的记录（体重明细里真的算 1 条）。现在库是空的就承认空。</p>
+  </div>
+</div>
+
+<div class="rule"></div>
+
+<h2>一、库空、档案在</h2>
+<p class="sub">这是「换了台电脑 / 清空了数据库但档案还在」的样子。记录型页面给引导卡，档案型页面照常显示。</p>
+
+<div class="grid">
+  <figure class="wide">
+    <img src="01-总览.png" alt="空库总览">
+    <figcaption><b>总览</b>体重/进度显示「—」，基线卡直接写「还没有称重记录」并说明记完第一次会怎样。主题、待办、时间线仍然是档案内容 —— 那是档案，不是记录，这么显示是对的。</figcaption>
+  </figure>
+  <figure>
+    <img src="02-减重记录.png" alt="空库减重记录">
+    <figcaption><b>减重记录</b>上限原来会凭空出现一条 88.0 kg 的自报记录（明细 1 条）。现在：当前体重 —、较起点 —、趋势位置给一行说明，不再用 300px 空图撑场面。</figcaption>
+  </figure>
+  <figure>
+    <img src="03-检验指标.png" alt="空库检验指标">
+    <figcaption><b>检验指标</b>全项目里空态做得最好的一页：四步引导 + 两个入口 + 每个区块各自的空文案。这一页可以直接当其他页面的模板。</figcaption>
+  </figure>
+  <figure>
+    <img src="04-全部检验记录.png" alt="空库全部检验记录">
+    <figcaption><b>全部检验记录</b>空表 + 「0 / 0 条 · 0 次检查 · 0 份报告」+ 一句该从哪儿开始。</figcaption>
+  </figure>
+  <figure>
+    <img src="05-就诊记录.png" alt="空库就诊记录">
+    <figcaption><b>就诊记录</b>一条【示例·待填】占位行 + 两个 CTA。示例不算数据，也不会写进库，但空页面上先摆一张表稍微重了点。</figcaption>
+  </figure>
+  <figure>
+    <img src="06-减重执行.png" alt="空库减重执行">
+    <figcaption><b>减重执行</b>提醒卡 + 两块空态。「还没有每日记录」在一屏里出现三次，可以合并成一句。</figcaption>
+  </figure>
+  <figure>
+    <img src="07-睡眠.png" alt="空库睡眠">
+    <figcaption><b>睡眠 / 生命体征 / 症状日记</b>同一套结构：一张卡 + 一个主按钮 + 一句说明。能用，但页面下半截是大片空白，气势比检验页弱很多。</figcaption>
+  </figure>
+  <figure>
+    <img src="08-个人资料.png" alt="空库个人资料">
+    <figcaption><b>个人资料</b>15 项清单 + 缺什么 + 完整度 31%（来自档案的已填项）。空库不影响这一页，它本来就是「还缺什么」的清单。</figcaption>
+  </figure>
+</div>
+
+<h2>二、档案也清空</h2>
+<p class="sub">把 <code>data.js</code> 换成空骨架再跑一遍 —— 相当于把项目交给一个没有任何病史的人。</p>
+
+<div class="grid">
+  <figure>
+    <img src="09-档案也空-总览.png" alt="空档案总览">
+    <figcaption><b>总览（改后）</b>0 个主题、0 条事件、0% 完整度，每一块都有自己的空文案。改之前这一页直接抛异常，只剩页头和页脚。</figcaption>
+  </figure>
+  <figure>
+    <img src="10-档案也空-减重.png" alt="空档案减重">
+    <figcaption><b>减重记录（改后）</b>没有目标值也不再崩。改之前异常发生在渲染中途，页面会停在<em>上一个</em>路由的内容上，看起来像「点错了页面」。</figcaption>
+  </figure>
+  <figure class="half">
+    <img src="11-窄屏基线卡.png" alt="窄屏基线卡">
+    <figcaption><b>窄屏基线卡</b>390px 下四项指标仍能读，但「—」和它的说明文字（待记录体重 / 未设）挤在同一行，密度偏高。</figcaption>
+  </figure>
+</div>
+
+<h2>三、逐页判定</h2>
+<p class="sub">15 个路由，空库状态下的表现。</p>
+<table>
+  <thead><tr><th>页面</th><th>没数据时的样子</th><th>判定</th></tr></thead>
+  <tbody>
+    <tr><td class="k">总览</td><td>档案内容照常；体重、BMI、进度显示「—」并写明原因</td><td><span class="tag fix">已修</span></td></tr>
+    <tr><td class="k">健康问题</td><td>9 个主题来自档案；空档案时给「先建一个问题」的提示</td><td><span class="tag ok">可用</span></td></tr>
+    <tr><td class="k">检验指标</td><td>四步引导卡 + 四处分区空态</td><td><span class="tag ok">标杆</span></td></tr>
+    <tr><td class="k">全部检验记录</td><td>空表 + 计数 0 + 起点提示</td><td><span class="tag ok">可用</span></td></tr>
+    <tr><td class="k">检查时间线</td><td>档案事件按年分组；空档案时整页只有一句页脚</td><td><span class="tag thin">偏空</span></td></tr>
+    <tr><td class="k">就诊记录</td><td>示例行 + 「登记真实就诊 / 按示例草稿新建」</td><td><span class="tag ok">可用</span></td></tr>
+    <tr><td class="k">就诊摘要</td><td>「选一次就诊或填日期区间」+ 两个跳转</td><td><span class="tag ok">可用</span></td></tr>
+    <tr><td class="k">用药记录</td><td>结构化用药 0 条 + 档案里的历史用药对照</td><td><span class="tag ok">可用</span></td></tr>
+    <tr><td class="k">复诊待办</td><td>档案 11 项；空档案时显示「还没有待办」</td><td><span class="tag ok">可用</span></td></tr>
+    <tr><td class="k">减重记录</td><td>当前体重 —、趋势给一行说明、围度/成分各有空文案</td><td><span class="tag fix">已修</span></td></tr>
+    <tr><td class="k">减重执行</td><td>提醒卡 + 两块空态，文案重复三次</td><td><span class="tag thin">可再收</span></td></tr>
+    <tr><td class="k">睡眠</td><td>一张卡 + 导入入口 + 支持文件说明</td><td><span class="tag thin">偏空</span></td></tr>
+    <tr><td class="k">生命体征</td><td>一张卡 + 参考区间说明</td><td><span class="tag thin">偏空</span></td></tr>
+    <tr><td class="k">症状日记</td><td>一张卡 + 自评说明</td><td><span class="tag thin">偏空</span></td></tr>
+    <tr><td class="k">个人资料</td><td>15 项待填清单 + 缺项提示 + 完整度</td><td><span class="tag ok">可用</span></td></tr>
+  </tbody>
+</table>
+
+<h2>四、这次动了什么</h2>
+<ol class="changes">
+  <li><b>不再凭空造一条体重记录。</b><code>app.core.js</code> 里去掉了「库空就用档案起点补一条」的种子，服务端返回空就是空。</li>
+  <li><b>没体重、没目标时不再崩。</b>总览和减重页的体重、BMI、进度改成分支显示「—」，并写清「还没有称重记录」「档案里还没设长期目标」。</li>
+  <li><b>单点不画趋势图。</b>只有一个时间点时（任意图表）改成一行说明「只有某天这一次记录（值）。再记一次，才看得出是升还是降」，同时清掉 <code>.chart-box</code> 的 300px 最小高度。</li>
+  <li><b>空档案的兜底。</b>状态标签、档案完整度（除零 → NaN）、总览的主题/事件/待办、「称重与记录规则」在缺字段时都给了空文案，不再整页中断。</li>
+</ol>
+
+<footer>临时服务：<code>health_server.py -p 8798 -d &lt;临时库&gt;</code>，与正式库 <code>data/health.db</code> 完全隔离。截图均为 1440×980 整页，窄屏为 390×844。</footer>
+
+</div>
+</body>
+</html>
