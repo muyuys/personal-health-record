@@ -8,8 +8,8 @@ import { Icon } from '../../components/icons';
 import { useStore } from '../../store/useStore';
 import { EChart } from '../../lib/EChart';
 import { useReportModal } from '../reports/ReportModal';
+import { collectLabsStd, rawUnitSummary, type StdGroup } from './labsStd';
 import type { Lab, Report } from '../../api/types';
-import type { WindowMetricGroup } from '../../lib/globals.d';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const num = (v: number | null | undefined) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : String(Number(Number(v).toPrecision(10))));
@@ -33,17 +33,18 @@ export function LabsView({ go }: { go: (to: string) => void }) {
   const { data } = useStore();
   const { setHead } = useHead();
   const reportModal = useReportModal();
-  const HM = window.HealthMetrics;
 
   const labs = data?.labs ?? [];
   const reports = data?.reports ?? [];
   const [range, setRange] = useState<'all' | '1y'>('all');
   const [metric, setMetric] = useState('');
 
-  const groups = useMemo<WindowMetricGroup[]>(() => {
-    if (!data || !HM) return [];
-    return HM.collect(data as unknown as Record<string, unknown>).filter((g) => g.kind === 'labs');
-  }, [data, HM]);
+  // 按「标准指标」聚合：同指标不同单位/方法合并为一条基准单位序列（valueStd）；
+  // 未映射/定性项回退到 name+unit 分组，不混线。
+  const groups = useMemo<StdGroup[]>(() => {
+    if (!data) return [];
+    return collectLabsStd(labs, reports);
+  }, [data, labs, reports]);
 
   const scoped = useMemo(() => {
     const cut = range === '1y' ? cutoffDate() : '';
@@ -77,7 +78,7 @@ export function LabsView({ go }: { go: (to: string) => void }) {
     setHead({
       eyebrow: 'LAB RESULTS　检验记录',
       title: '检验指标',
-      sub: '只连接同名、同单位的结果；不同检测方法之间不作比较',
+      sub: '同一指标自动换算到基准单位后对比；不同检测方法仅作参考',
       actions: (
         <>
           <div className="segmented">
@@ -86,6 +87,7 @@ export function LabsView({ go }: { go: (to: string) => void }) {
           </div>
           <div className="btn-row">
             <button className="btn btn-ghost" type="button" onClick={() => go('metrics')}><Icon name="trend" />按指标汇总</button>
+            <button className="btn btn-ghost" type="button" onClick={() => go('labs-unmapped')}><Icon name="info" />指标维护</button>
             <button className="btn btn-ghost" type="button" onClick={() => go('labs-all')}><Icon name="file" />全部记录</button>
             <button className="btn btn-primary" type="button" onClick={() => go('labs-all')}><Icon name="plus" />录入结果</button>
           </div>
@@ -106,7 +108,7 @@ export function LabsView({ go }: { go: (to: string) => void }) {
         <div className="chart-head">
           <div className="chart-title">
             <h2>{allEmpty ? '还没有检验数据' : empty ? '近 1 年没有记录' : selGroup ? (selGroup as any).label || selGroup.key : '暂无可趋势指标'}</h2>
-            <p>{allEmpty ? '添加第一条结果后，这里会显示趋势' : empty ? `截至 ${cutoffDate()} 之后没有结果，可切换到「全部」查看` : selGroup ? `${selGroup.category}　·　${pts.length} 次记录　·　单位 ${selGroup.unit}` : '定性结果无单位/参考区间，不画趋势'}</p>
+            <p>{allEmpty ? '添加第一条结果后，这里会显示趋势' : empty ? `截至 ${cutoffDate()} 之后没有结果，可切换到「全部」查看` : selGroup ? `${selGroup.category}　·　${pts.length} 次记录　·　基准单位 ${selGroup.unit}${(selGroup as StdGroup).mixedUnits ? `（原始单位 ${rawUnitSummary(selGroup as StdGroup)}，已换算）` : ''}` : '定性结果无单位/参考区间，不画趋势'}</p>
           </div>
           <div className="chart-tools">
             {!allEmpty && !empty && selGroup ? (
@@ -133,7 +135,14 @@ export function LabsView({ go }: { go: (to: string) => void }) {
                 <span><i></i>{pts.length} 次结果{(() => { const bad = pts.filter((p) => (low != null && p.value < low) || (high != null && p.value > high)).length; return bad ? `，${bad} 次超出参考区间` : '，均在参考范围内'; })()}</span>
                 <span><i className="sq"></i>{(low !== null || high !== null) ? `底色为参考区间 ${low ?? '—'} – ${high ?? '—'} ${selGroup?.unit || ''}` : '该指标未填写参考范围'}</span>
               </div>
-              <p className="chart-note">单点表示一次检查；参考区间随实验室方法变化</p>
+              <p className="chart-note">{(() => {
+                const g = selGroup as StdGroup | null;
+                const parts = ['单点表示一次检查'];
+                if (g?.mixedUnits) parts.push(`各次原始单位不同（${rawUnitSummary(g)}），已按基准单位 ${g.unit} 对齐`);
+                if (g?.methods && g.methods.length > 1) parts.push('检测方法不同，结果可比性有限');
+                else if (g?.methods && g.methods.length === 1) parts.push(`测定方法：${g.methods[0]}`);
+                return parts.join('；');
+              })()}</p>
             </div>
           </>
         )}

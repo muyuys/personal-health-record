@@ -43,6 +43,23 @@ export interface Lab {
   source: string;
   note: string;
   reportId: string;
+  // —— 后端读取时派生的「标准化」字段（只读，便于跨单位/跨方法对齐趋势）——
+  analyteId?: string;        // 命中的标准指标 id，空=未映射
+  stdName?: string;          // 标准指标名
+  stdCategory?: string;      // 标准指标分类（按说明对象：肝功能/肾功能/血脂…）
+  baseUnit?: string;         // 该指标基准单位
+  valueStd?: number | null;  // 换算到基准单位后的数值
+  lowStd?: number | null;    // 基准单位参考下限
+  highStd?: number | null;   // 基准单位参考上限
+  unitRaw?: string;          // 原始单位
+  valueRaw?: number | null;  // 原始数值
+  method?: string;           // 测定方法（如 电化学发光法）
+  stdStatus?: string;        // ok / qualitative / unit_unconverted / unmapped
+  refLowStd?: number | null; // 参考下限（自填或套标准）
+  refHighStd?: number | null;// 参考上限（自填或套标准）
+  refSource?: string;        // filled=自填 / standard=套用标准 / none=无
+  effLowStd?: number | null; // 生效下限：自填优先，否则标准
+  effHighStd?: number | null;// 生效上限：自填优先，否则标准
 }
 
 export interface Weight {

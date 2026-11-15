@@ -244,3 +244,36 @@ body:has(.ai-layout) .disclaimer{display:none}.feature-panel .btn{width:fit-cont
   .ai-ref-chip{min-height:30px}
   .ai-ref-remove{width:26px;height:26px;flex-basis:26px}
 }
+
+/* ===== 药物适应症标签 + 药物详情（2026-11 新增） ===== */
+.med-ind{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0 2px}
+.chip--ind{background:var(--pine-050,#EAF1EC);color:var(--pine-600,#3C6E52);font-weight:500}
+.med-name-btn{display:inline-flex;align-items:center;gap:4px;padding:0;background:none;border:0;cursor:pointer;
+  font:inherit;font-size:12.5px;font-weight:500;color:var(--ink-2);text-align:left;line-height:18px}
+.med-name-btn:hover{color:var(--pine-600,#3C6E52);text-decoration:underline}
+.med-info-dot{font-size:10px;color:var(--pine-600,#3C6E52);opacity:.8}
+.med-detail-act{color:var(--pine-600,#3C6E52)}
+.rc-ind{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+
+/* 药物详情弹层 */
+.modal--med-detail{max-width:640px}
+.med-detail-body{max-height:min(74vh,720px);overflow:auto;padding:2px 2px 4px}
+.med-detail-meta{font-size:11.5px;color:var(--muted);line-height:1.7;margin:0 0 12px;
+  padding:8px 10px;background:var(--bg-page,#F7F6F3);border-radius:6px}
+.med-detail-h{font:600 13px/1.4 var(--sans);color:var(--ink-1);margin:16px 0 8px;
+  padding-left:9px;border-left:3px solid var(--pine-500,#5C8A6E)}
+.med-detail-fields{margin:6px 0 4px}
+.med-detail-field{display:flex;gap:10px;align-items:flex-start}
+.med-detail-k{flex:0 0 auto;font-size:11.5px;color:var(--muted);padding-top:2px}
+.med-detail-sec p{font-size:12.5px;line-height:1.85;color:var(--ink-2);margin:0}
+.med-detail-sec.is-adverse{background:#FCF3F0;border-radius:8px;padding:10px 12px;margin-top:12px}
+.med-detail-sec.is-adverse .med-detail-h{border-left-color:#C0684F;margin-top:0}
+.med-detail-sec.is-caution{background:#FBF7EC;border-radius:8px;padding:10px 12px;margin-top:12px}
+.med-detail-sec.is-caution .med-detail-h{border-left-color:#C49A46;margin-top:0}
+.med-detail-list{margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.med-detail-row{display:grid;grid-template-columns:88px 1fr;gap:10px;
+  padding:8px 12px;border-top:1px solid var(--line);font-size:12.5px}
+.med-detail-row:first-child{border-top:0}
+.med-detail-row:nth-child(odd){background:var(--bg-page,#F9F8F5)}
+.med-detail-row dt{color:var(--muted);margin:0}
+.med-detail-row dd{margin:0;color:var(--ink-2);line-height:1.7;word-break:break-word}

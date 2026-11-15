@@ -11,6 +11,7 @@ import { VisitComposer } from './features/visits/VisitComposer';
 import { DailyView } from './features/daily/DailyView';
 import { MetricsView } from './features/metrics/MetricsView';
 import { LabsAllView } from './features/metrics/LabsAllView';
+import { LabsUnmappedView } from './features/metrics/LabsUnmappedView';
 import { LabsView } from './features/metrics/LabsView';
 import { ThemesView } from './features/themes/ThemesView';
 import { TodosView } from './features/todos/TodosView';
@@ -73,6 +74,8 @@ function Views() {
         return <LabsView go={go} />;
       case 'labs-all':
         return <LabsAllView go={go} />;
+      case 'labs-unmapped':
+        return <LabsUnmappedView go={go} />;
       case 'daily':
         return <DailyView />;
       case 'themes':

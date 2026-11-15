@@ -13,7 +13,11 @@ const PAGE = 30;
 const uid = () => 'lab' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const pad = (n: number) => String(n).padStart(2, '0');
 const num = (v: number | null | undefined) => (v === null || v === undefined || !Number.isFinite(Number(v)) ? '—' : String(Number(Number(v).toPrecision(10))));
-const rangeText = (r: Lab) => (r.low === null && r.high === null ? '未记录' : `${r.low === null ? '—' : num(r.low)} – ${r.high === null ? '—' : num(r.high)}`);
+const rangeText = (r: Lab) => {
+  const low = r.low ?? r.refLowStd ?? null;
+  const high = r.high ?? r.refHighStd ?? null;
+  return low === null && high === null ? '未记录' : `${low === null ? '—' : num(low)} – ${high === null ? '—' : num(high)}`;
+};
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 function cutoff() { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function reportShort(t: string) { return (t || '').replace(/\s+/g, ' ').slice(0, 24); }
@@ -48,6 +52,9 @@ export function LabsAllView({ go }: { go: (to: string) => void }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ date: todayISO(), category: '血常规', name: '', value: '', unit: '', low: '', high: '', note: '' });
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<Lab | null>(null);
+  const [editDraft, setEditDraft] = useState({ date: '', category: '', name: '', value: '', unit: '', low: '', high: '', note: '' });
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     setHead({
@@ -126,6 +133,41 @@ export function LabsAllView({ go }: { go: (to: string) => void }) {
   };
   const del = async (id: string) => { await api.putTable('labs', labs.filter((l) => l.id !== id)); await reload(); };
 
+  const openEdit = (r: Lab) => {
+    setEditing(r);
+    setEditDraft({
+      date: r.date || '',
+      category: r.category || '其他',
+      name: r.name || '',
+      value: r.value === null || r.value === undefined ? '' : String(r.value),
+      unit: r.unit || '',
+      low: r.low === null || r.low === undefined ? '' : String(r.low),
+      high: r.high === null || r.high === undefined ? '' : String(r.high),
+      note: r.note || '',
+    });
+  };
+  const saveEdit = async () => {
+    if (!editing || !editDraft.name.trim()) return;
+    const parseOrNull = (s: string) => (s.trim() === '' ? null : parseFloat(s));
+    const updated: Lab = {
+      ...editing,
+      date: editDraft.date,
+      category: editDraft.category,
+      name: editDraft.name,
+      value: parseOrNull(editDraft.value),
+      unit: editDraft.unit,
+      low: parseOrNull(editDraft.low),
+      high: parseOrNull(editDraft.high),
+      note: editDraft.note,
+    };
+    setEditSaving(true);
+    try {
+      await api.putTable('labs', labs.map((l) => (l.id === editing.id ? updated : l)));
+      await reload();
+      setEditing(null);
+    } finally { setEditSaving(false); }
+  };
+
   return (
     <div className="stack">
       {adding && (
@@ -142,6 +184,23 @@ export function LabsAllView({ go }: { go: (to: string) => void }) {
             <label className="field"><span>备注</span><input value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} /></label>
           </div>
           <div className="form-actions"><button className="btn btn-primary" type="button" disabled={saving} onClick={() => void add()}>{saving ? '保存中…' : '保存'}</button><button className="btn btn-secondary" type="button" onClick={() => setAdding(false)}>取消</button></div>
+        </section>
+      )}
+
+      {editing && (
+        <section className="card">
+          <div className="card-head"><h2>编辑检验记录</h2></div>
+          <div className="form-grid">
+            <label className="field"><span>日期</span><input type="date" value={editDraft.date} onChange={(e) => setEditDraft((d) => ({ ...d, date: e.target.value }))} /></label>
+            <label className="field"><span>类别</span><select value={editDraft.category} onChange={(e) => setEditDraft((d) => ({ ...d, category: e.target.value }))}>{[...new Set([...CATS, ...cats, editDraft.category])].filter(Boolean).map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label className="field"><span>项目</span><input value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} /></label>
+            <label className="field"><span>结果</span><input type="number" step="0.01" value={editDraft.value} onChange={(e) => setEditDraft((d) => ({ ...d, value: e.target.value }))} /></label>
+            <label className="field"><span>单位</span><input value={editDraft.unit} onChange={(e) => setEditDraft((d) => ({ ...d, unit: e.target.value }))} /></label>
+            <label className="field"><span>参考下限</span><input type="number" step="0.01" value={editDraft.low} onChange={(e) => setEditDraft((d) => ({ ...d, low: e.target.value }))} placeholder="留空则用标准参考" /></label>
+            <label className="field"><span>参考上限</span><input type="number" step="0.01" value={editDraft.high} onChange={(e) => setEditDraft((d) => ({ ...d, high: e.target.value }))} placeholder="留空则用标准参考" /></label>
+            <label className="field"><span>备注</span><input value={editDraft.note} onChange={(e) => setEditDraft((d) => ({ ...d, note: e.target.value }))} /></label>
+          </div>
+          <div className="form-actions"><button className="btn btn-primary" type="button" disabled={editSaving} onClick={() => void saveEdit()}>{editSaving ? '保存中…' : '保存'}</button><button className="btn btn-secondary" type="button" onClick={() => setEditing(null)}>取消</button></div>
         </section>
       )}
 
@@ -195,10 +254,10 @@ export function LabsAllView({ go }: { go: (to: string) => void }) {
                               <tr key={r.id}>
                                 <td className="name-cell"><button className="metric-inline-link link-btn" type="button" title="查看该指标历史变化" onClick={() => go('metrics')}>{r.name}</button><span className="cat-tag"> {r.category}</span></td>
                                 <td className={'num' + (isAbnormal(r) ? ' over' : '')} style={isAbnormal(r) ? { color: '#B4553F', fontWeight: 600 } : { textAlign: 'right' }}>{labValueText(r)}<span className="lab-unit"> {r.unit}</span></td>
-                                <td className="ref col-ref" style={{ textAlign: 'right' }}>{rangeText(r)}</td>
+                                <td className="ref col-ref" style={{ textAlign: 'right' }}>{rangeText(r)}{r.refSource === 'standard' ? <span className="ref-src" title="未自填参考范围，显示国内成人常用标准参考"> 标准</span> : null}</td>
                                 <td className="flag">{flagCell(r)}</td>
                                 <td className="report-col col-rep">{rp ? <button className="rp-link link-btn" type="button" title={'查看原件：' + rp.title} onClick={() => go('reports')}>{reportShort(rp.title)}</button> : <span className="na">—</span>}</td>
-                                <td className="act"><button type="button" onClick={() => void del(r.id)} className="danger">删除</button></td>
+                                <td className="act"><button type="button" onClick={() => openEdit(r)} className="edit-btn">编辑</button> <button type="button" onClick={() => void del(r.id)} className="danger">删除</button></td>
                               </tr>
                             );
                           })}

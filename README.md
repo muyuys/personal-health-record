@@ -1,6 +1,26 @@
 # 个人健康档案
 
-整理更新：2026-10-30（香港时间）。**页面入口：[index.html](index.html)**（档案应用，需用浏览器打开）。第一次用先看 **[docs/使用指南.md](docs/使用指南.md)**（怎么打开、怎么录入、数据在哪、出问题怎么办）。不想看 Markdown 就双击 `README.html`，是这一页的渲染版。
+整理更新：2026-11-15（香港时间）。
+
+> ## ⚠️ 技术栈升级：旧版 WebUI 已下线
+>
+> 旧的「单文件网页」技术栈（根目录 `index.html` + `assets/` + `js/`，后端 `server/health_server.py`，端口 `127.0.0.1:8765`）**已于 2026-11-15 下线，不再启动、不再作为页面入口**。
+>
+> 现用「新版技术栈」，由两部分组成：
+>
+> - **前端**：React + Vite + TypeScript，目录 [`frontend/`](frontend/)，开发服务 `127.0.0.1:5173`。
+> - **后端**：FastAPI（`uvicorn`），目录 [`backend/`](backend/)，监听 `127.0.0.1:8001`；前端经 Vite 代理把 `/api`、`/files` 转发到后端。两者复用同一个 `data/health.db`。
+>
+> **启动新版（两个进程都要起）**：
+>
+> - 后端：`cd backend` → `.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001`
+> - 前端：`cd frontend` → `pnpm run dev`（默认 `http://127.0.0.1:5173/`）
+>
+> 浏览器打开 **http://127.0.0.1:5173/** 即为新版界面。后端健康检查：`GET http://127.0.0.1:8001/api/health` 返回 `{"ok":true,...}`。
+>
+> 下文「目录结构」「界面」「数据」「服务文件」等章节中凡提到 `index.html`、`assets/`、`server/health_server.py`、端口 `8765` 的描述，均为**旧版技术栈**的历史说明，仅作归档参考，不代表当前运行方式。当前以 `frontend/`（React+Vite）与 `backend/`（FastAPI）为准。
+
+第一次用先看 **[docs/使用指南.md](docs/使用指南.md)**（怎么打开、怎么录入、数据在哪、出问题怎么办）。不想看 Markdown 就双击 `README.html`，是这一页的渲染版。
 
 ## AI 问答、MCP 与多人档案
 

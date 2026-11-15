@@ -28,7 +28,7 @@ const BrandMark = () => (
 // 当前导航高亮：把二级视图归到对应一级
 function activeNav(name: string): string {
   if (name === 'visit' || name === 'new-visit' || name === 'new-report' || name === 'records') return 'records';
-  if (name === 'labs' || name === 'labs-all' || name === 'metrics') return 'metrics';
+  if (name === 'labs' || name === 'labs-all' || name === 'metrics' || name === 'labs-unmapped') return 'metrics';
   if (name === 'theme' || name === 'themes') return 'themes';
   if (name === 'summary' || name === 'me') return 'me';
   if (name === 'about') return 'settings';

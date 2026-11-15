@@ -55,14 +55,16 @@ function medicationsTableHTML(filterVisitId) {
   }
   return `<div class="table-wrap"><table class="data"><thead><tr>
       <th>药物</th><th>剂量 / 频次</th><th>途径</th><th>起止</th><th>状态</th><th></th></tr></thead><tbody>
-    ${list.map(m => `<tr>
-      <td><p class="med-name">${esc(m.name)}</p>${m.purpose ? `<small style="color:var(--muted-3);display:block">${esc(m.purpose)}</small>` : ''}${m.infoDate ? `<small style="color:var(--muted-3);display:block">信息日期 ${esc(m.infoDate)}</small>` : ''}${m.sourceRef ? `<small style="color:var(--muted-3);display:block">来源 ${esc(m.sourceRef)}</small>` : ''}${m.toVerify ? `<small style="color:var(--warn);display:block">待核对 ${esc(m.toVerify)}</small>` : ''}</td>
+    ${list.map(m => {
+      const hasInfo = !!medInfoFor(m.name);
+      return `<tr>
+      <td><p class="med-name">${hasInfo ? `<button class="med-name-btn" type="button" data-act="med-detail" data-id="${esc(m.id)}" title="查看药物详情">${esc(m.name)}<span class="med-info-dot">ⓘ</span></button>` : esc(m.name)}</p>${medIndicationChips(m.name, 3)}${m.purpose ? `<small style="color:var(--muted-3);display:block">${esc(m.purpose)}</small>` : ''}${m.infoDate ? `<small style="color:var(--muted-3);display:block">信息日期 ${esc(m.infoDate)}</small>` : ''}${m.sourceRef ? `<small style="color:var(--muted-3);display:block">来源 ${esc(m.sourceRef)}</small>` : ''}${m.toVerify ? `<small style="color:var(--warn);display:block">待核对 ${esc(m.toVerify)}</small>` : ''}</td>
       <td class="med-use">${esc([m.dose, m.frequency].filter(Boolean).join('　') || '—')}</td>
       <td>${esc(m.route || '—')}</td>
       <td class="date">${esc([m.startDate, m.endDate].filter(Boolean).join(' → ') || '—')}</td>
       <td><span class="chip chip-sm ${m.status === 'active' ? 'green' : ''}">${esc(medStatusLabel(m.status) || '—')}</span></td>
-      <td class="act"><button data-act="med-edit" data-id="${esc(m.id)}">编辑</button><button class="danger" data-act="med-del" data-id="${esc(m.id)}">删除</button></td>
-    </tr>`).join('')}</tbody></table></div>`;
+      <td class="act">${hasInfo ? `<button class="med-detail-act" data-act="med-detail" data-id="${esc(m.id)}">详情</button>` : ''}<button data-act="med-edit" data-id="${esc(m.id)}">编辑</button><button class="danger" data-act="med-del" data-id="${esc(m.id)}">删除</button></td>
+    </tr>`; }).join('')}</tbody></table></div>`;
 }
 
 /* ======================= 渲染：就诊摘要导出 =======================

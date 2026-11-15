@@ -6,6 +6,7 @@ import { useHead } from '../../components/head';
 import { Icon } from '../../components/icons';
 import { useStore } from '../../store/useStore';
 import { EChart } from '../../lib/EChart';
+import { collectLabsStd, type StdGroup } from './labsStd';
 import type { WindowMetricGroup, WindowMetricsRecord } from '../../lib/globals.d';
 
 const PAGE = 20;
@@ -24,6 +25,13 @@ const KIND_OPTS: [string, string][] = [
   ['labs', '检验'], ['weights', '体重与身体成分'], ['body', '身体围度'], ['vitals', '生命体征'], ['sleepLogs', '睡眠'],
 ];
 
+// 检验指标的「说明对象」分类展示顺序（与后端 CATEGORY_ORDER 对应）
+const LAB_CAT_ORDER = ['血常规', '肝功能', '肾功能', '血脂', '糖代谢', '电解质', '心血管', '维生素与微量元素'];
+const labCatRank = (c: string) => {
+  const i = LAB_CAT_ORDER.indexOf(c);
+  return i < 0 ? LAB_CAT_ORDER.length : i;
+};
+
 export function MetricsView({ go }: { go: (to: string) => void }) {
   const { data } = useStore();
   const { setHead } = useHead();
@@ -31,11 +39,19 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
 
   const groups = useMemo<WindowMetricGroup[]>(() => {
     if (!data || !HM) return [];
-    return HM.collect(data as unknown as Record<string, unknown>);
+    const all = HM.collect(data as unknown as Record<string, unknown>);
+    const nonLab = all.filter((g) => g.kind !== 'labs');
+    // 检验指标改用「标准指标」聚合（跨单位/方法按基准单位对齐）
+    const labStd = collectLabsStd((data as any).labs ?? [], (data as any).reports ?? []) as WindowMetricGroup[];
+    return [...labStd, ...nonLab].sort(
+      (a, b) => (a.kind === 'labs' ? 0 : 1) - (b.kind === 'labs' ? 0 : 1) ||
+        b.records.length - a.records.length || a.label.localeCompare(b.label, 'zh'),
+    );
   }, [data, HM]);
 
   const [q, setQ] = useState('');
   const [kind, setKind] = useState('');
+  const [labCat, setLabCat] = useState('');
   const [selectedKey, setSelectedKey] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -56,6 +72,7 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
       sub: '按指标汇总记录，查看每一次结果和变化。',
       actions: (
         <>
+          <button className="btn btn-ghost" type="button" onClick={() => go('labs-unmapped')}>指标维护</button>
           <button className="btn btn-ghost" type="button" onClick={() => go('labs-all')}>全部检验记录</button>
           <button className="btn btn-primary" type="button" onClick={() => go('labs-all')}><Icon name="plus" />录入检验</button>
         </>
@@ -66,10 +83,36 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
 
   const visible = groups.filter((g) => {
     if (kind && g.kind !== kind) return false;
+    if (labCat && !(g.kind === 'labs' && g.category === labCat)) return false;
     const needle = q.trim().toLowerCase();
     if (!needle) return true;
     return [g.label, g.unit, g.category, g.detail].join(' ').toLowerCase().includes(needle);
   });
+
+  // 左侧列表分组：检验项按「说明对象」分类分组；其他来源不分组
+  type ListSection = { key: string; title: string; items: WindowMetricGroup[] };
+  const sections = useMemo<ListSection[]>(() => {
+    const labItems = visible.filter((g) => g.kind === 'labs');
+    const otherItems = visible.filter((g) => g.kind !== 'labs');
+    const out: ListSection[] = [];
+    const byCat = new Map<string, WindowMetricGroup[]>();
+    for (const g of labItems) {
+      const c = g.category || '其他检验';
+      if (!byCat.has(c)) byCat.set(c, []);
+      byCat.get(c)!.push(g);
+    }
+    const cats = [...byCat.keys()].sort((a, b) => labCatRank(a) - labCatRank(b) || a.localeCompare(b, 'zh'));
+    for (const c of cats) out.push({ key: 'cat:' + c, title: c, items: byCat.get(c)!.sort((a, b) => b.records.length - a.records.length || a.label.localeCompare(b.label, 'zh')) });
+    if (otherItems.length) out.push({ key: 'other', title: '其他健康指标', items: otherItems });
+    return out;
+  }, [visible]);
+
+  // 可用分类（给下拉）
+  const labCats = useMemo(() => {
+    const s = new Set<string>();
+    for (const g of groups) if (g.kind === 'labs' && g.category) s.add(g.category);
+    return [...s].sort((a, b) => labCatRank(a) - labCatRank(b) || a.localeCompare(b, 'zh'));
+  }, [groups]);
 
   const records = selected ? HM.filter(selected.records, from, to) : [];
   const stats = selected ? HM.summary(records) : null;
@@ -107,36 +150,52 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
         <div className="metric-index-head">
           <h2>选择指标 <small>{groups.length}</small></h2>
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索指标名称" aria-label="搜索指标名称" />
-          <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="按指标来源筛选">
+          <select value={kind} onChange={(e) => { setKind(e.target.value); setLabCat(''); }} aria-label="按指标来源筛选">
             <option value="">全部来源</option>
             {KIND_OPTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
+          {(kind === '' || kind === 'labs') && labCats.length > 0 && (
+            <select value={labCat} onChange={(e) => setLabCat(e.target.value)} aria-label="按检验分类筛选">
+              <option value="">全部分类</option>
+              {labCats.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
         </div>
         <div className="metric-index-list" style={{ maxHeight: 560, overflow: 'auto' }}>
-          {visible.length === 0 ? <p className="metric-no-results">没有匹配的指标，试试其他名称或来源。</p> : visible.map((g) => {
-            const lastRec = g.records[g.records.length - 1];
-            const on = g.key === selected?.key;
-            return (
-              <button key={g.key} type="button" onClick={() => setSelectedKey(g.key)} title={g.label}
-                className="metric-index-row" aria-current={on ? 'true' : undefined}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left',
-                  padding: '8px 8px', border: 'none', borderBottom: '1px solid var(--line-soft)',
-                  background: on ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer',
-                  borderLeft: on ? '2px solid var(--pine-600)' : '2px solid transparent',
-                }}>
-                <span className="metric-index-name">{g.label}
-                  <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>
-                    {[g.unit || '无单位', g.detail].filter(Boolean).join(' · ')}
-                  </small>
-                </span>
-                <span className="metric-index-value" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {lastRec.value === null ? (lastRec.qualitative || '—') : metricNumber(lastRec.value)}
-                  <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>{g.records.length} 条</small>
-                </span>
-              </button>
-            );
-          })}
+          {visible.length === 0 ? <p className="metric-no-results">没有匹配的指标，试试其他名称或来源。</p> : sections.map((sec) => (
+            <div key={sec.key} className="metric-index-section">
+              <div className="metric-index-cat" style={{
+                position: 'sticky', top: 0, zIndex: 1,
+                padding: '6px 8px 4px', fontSize: 11, fontWeight: 600, letterSpacing: '.02em',
+                color: 'var(--pine-2)', background: 'var(--bg, #fff)',
+                borderBottom: '1px solid var(--line-soft)',
+              }}>{sec.title}<span style={{ color: 'var(--ink-4)', fontWeight: 400, marginLeft: 6 }}>{sec.items.length}</span></div>
+              {sec.items.map((g) => {
+                const lastRec = g.records[g.records.length - 1];
+                const on = g.key === selected?.key;
+                return (
+                  <button key={g.key} type="button" onClick={() => setSelectedKey(g.key)} title={g.label}
+                    className="metric-index-row" aria-current={on ? 'true' : undefined}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', width: '100%', textAlign: 'left',
+                      padding: '8px 8px 8px 14px', border: 'none', borderBottom: '1px solid var(--line-soft)',
+                      background: on ? 'var(--bg-hover)' : 'transparent', cursor: 'pointer',
+                      borderLeft: on ? '2px solid var(--pine-600)' : '2px solid transparent',
+                    }}>
+                    <span className="metric-index-name">{g.label}
+                      <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>
+                        {[g.unit || '无单位', g.detail].filter(Boolean).join(' · ')}
+                      </small>
+                    </span>
+                    <span className="metric-index-value" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {lastRec.value === null ? (lastRec.qualitative || '—') : metricNumber(lastRec.value)}
+                      <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>{g.records.length} 条</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </aside>
 
@@ -203,7 +262,17 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
           )}
         </div>
         <p className="metric-chart-note hint" style={{ marginTop: 4 }}>
-          {stats?.variedRange ? '各次参考范围不同，请以明细中各自的范围为准。' : stats?.sharedRange ? '底色为这些记录共同的参考范围。' : '未显示参考区间底色；以每条记录实际填写的范围为准。'} 连接线仅辅助观察，未测日期不补值。
+          {(() => {
+            const g = selected as StdGroup;
+            const parts: string[] = [];
+            if (stats?.variedRange) parts.push('各次参考范围不同，请以明细中各自的范围为准。');
+            else if (stats?.sharedRange) parts.push('底色为这些记录共同的参考范围。');
+            if (g.mixedUnits) parts.push(`该指标各次原始单位不同，已统一换算到基准单位 ${selected.unit} 后对比。`);
+            if (g.methods && g.methods.length > 1) parts.push(`检测方法不同（${g.methods.join('、')}），结果可比性有限。`);
+            else if (g.methods && g.methods.length === 1) parts.push(`测定方法：${g.methods[0]}。`);
+            parts.push('连接线仅辅助观察，未测日期不补值。');
+            return parts.join(' ');
+          })()}
         </p>
 
         <div className="metric-history-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 16 }}>
@@ -217,14 +286,18 @@ export function MetricsView({ go }: { go: (to: string) => void }) {
               {pageRows.map((row) => {
                 const hi = row.flag === 'H' || (row.value !== null && row.high !== null && row.value > row.high);
                 const lo = row.flag === 'L' || (row.value !== null && row.low !== null && row.value < row.low);
+                const sr = row as unknown as StdGroup['records'][number];
                 return (
                   <tr key={row.id}>
                     <td className="date">{row.date}</td>
                     <td className={'metric-result' + (hi || lo ? ' is-flagged' : '')} style={hi || lo ? { color: '#B4553F', fontWeight: 600 } : undefined}>
                       {row.value === null ? (row.qualitative || '—') : metricNumber(row.value)}{hi ? ' ↑' : lo ? ' ↓' : ''}
+                      {sr.converted && sr.rawValue !== null && sr.rawValue !== undefined ? (
+                        <small style={{ display: 'block', color: 'var(--ink-4)', fontSize: 11 }}>原始 {metricNumber(sr.rawValue)} {sr.rawUnit}</small>
+                      ) : null}
                     </td>
                     <td>{rangeText(row)}</td>
-                    <td>{row.source || '—'}{row.note ? <small style={{ color: 'var(--ink-4)' }}>　{row.note}</small> : null}</td>
+                    <td>{row.source || '—'}{sr.method ? <small style={{ color: 'var(--ink-4)' }}>　{sr.method}</small> : null}{row.note ? <small style={{ color: 'var(--ink-4)' }}>　{row.note}</small> : null}</td>
                   </tr>
                 );
               })}

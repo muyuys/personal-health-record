@@ -35,9 +35,11 @@ export interface EChartProps {
   name?: string;
   height?: number;
   emptyText?: string;
+  /** 是否启用底部 dataZoom 滑动条（可拖拽选择时间范围） */
+  zoom?: boolean;
 }
 
-export function EChart({ points, low, high, target, unit = '', name = '指标', height, emptyText }: EChartProps) {
+export function EChart({ points, low, high, target, unit = '', name = '指标', height, emptyText, zoom = false }: EChartProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const instRef = useRef<any>(null);
 
@@ -73,12 +75,32 @@ export function EChart({ points, low, high, target, unit = '', name = '指标', 
       return pt;
     });
 
+    // 点密度：稀疏时用空心圆环 + 渐变面积，密集时改用小实心点，避免糊成一团
+    const sparse = clean.length <= 40;
+    const symbolSize = clean.length > 120 ? 3 : clean.length > 60 ? 4 : 5.5;
+    const lineW = Math.max(1.6, Math.min(2.6, h));
+    // 面积渐变：从线附近淡淡的松绿铺到透明，给折线一点视觉分量
+    const areaGradient = echarts.graphic && echarts.graphic.LinearGradient
+      ? new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(47,107,87,0.20)' },
+          { offset: 1, color: 'rgba(47,107,87,0.01)' },
+        ])
+      : 'rgba(47,107,87,0.12)';
+
     const series: any = {
-      name, type: 'line', data, showSymbol: true, symbolSize: clean.length > 60 ? 4 : 5.5,
-      smooth: false, connectNulls: false,
-      lineStyle: { width: h, color: THEME.pine, cap: 'round', join: 'round' },
-      itemStyle: { color: THEME.pine, borderWidth: 0 },
-      emphasis: { focus: 'series', scale: 1.15 },
+      name, type: 'line', data, showSymbol: true, symbolSize,
+      symbol: 'circle', smooth: false, connectNulls: false,
+      lineStyle: {
+        width: lineW, color: THEME.pine, cap: 'round', join: 'round',
+        shadowColor: 'rgba(47,107,87,0.18)', shadowBlur: 6, shadowOffsetY: 3,
+      },
+      // 稀疏时空心圆环（白心 + 松绿描边），密集时实心小点
+      itemStyle: sparse
+        ? { color: '#fff', borderColor: THEME.pine, borderWidth: 1.6 }
+        : { color: THEME.pine, borderWidth: 0 },
+      // 可见且数据点不多时，给折线下方铺一层淡面积（越界红点不铺，保持清爽）
+      areaStyle: sparse && clean.length > 2 ? { color: areaGradient, opacity: 1 } : undefined,
+      emphasis: { focus: 'series', scale: 1.2, itemStyle: { borderWidth: 2 } },
     };
     const markAreas: any[] = [];
     if (low != null && high != null) {
@@ -97,7 +119,28 @@ export function EChart({ points, low, high, target, unit = '', name = '指标', 
     const option = {
       animationDuration: 300,
       color: THEME.palette,
-      grid: { left: 46, right: 18, top: 28, bottom: 44, containLabel: false },
+      grid: { left: 46, right: 18, top: 28, bottom: zoom ? 64 : 44, containLabel: false },
+      ...(zoom
+        ? {
+            dataZoom: [
+              { type: 'inside', throttle: 60 },
+              {
+                type: 'slider',
+                height: 18,
+                bottom: 14,
+                borderColor: THEME.grid,
+                backgroundColor: THEME.gapFill,
+                fillerColor: 'rgba(47,107,87,0.12)',
+                handleStyle: { color: THEME.pine, borderColor: THEME.pine },
+                moveHandleStyle: { color: THEME.bandEdge },
+                dataBackground: { lineStyle: { color: THEME.bandEdge }, areaStyle: { color: THEME.gridSoft } },
+                selectedDataBackground: { lineStyle: { color: THEME.pine }, areaStyle: { color: 'rgba(47,107,87,0.15)' } },
+                textStyle: { color: THEME.axisText, fontSize: 10 },
+                labelFormatter: (_v: number, s: string) => s,
+              },
+            ],
+          }
+        : {}),
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'line', lineStyle: { color: THEME.bandEdge, type: 'dashed' } },
@@ -141,7 +184,7 @@ export function EChart({ points, low, high, target, unit = '', name = '指标', 
     const ro = new ResizeObserver(() => { try { inst.resize(); } catch { /* ignore */ } });
     ro.observe(host);
     return () => { ro.disconnect(); };
-  }, [points, low, high, target, unit, name, height, emptyText]);
+  }, [points, low, high, target, unit, name, height, emptyText, zoom]);
 
   useEffect(() => () => { try { instRef.current?.dispose?.(); } catch { /* ignore */ } instRef.current = null; }, []);
 

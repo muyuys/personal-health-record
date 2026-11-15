@@ -159,8 +159,9 @@ function recentStream() {
     chip: '用药',
     title: m.name || '用药',
     summary: [m.dose, m.frequency, m.route].filter(Boolean).join('　'),
-    meta: `用药 · ${medStatusLabel(m.status) || '状态待确认'}`,
-    act: 'med-edit'
+    indHTML: medIndicationChips(m.name, 4),
+    meta: `用药 · ${medStatusLabel(m.status) || '状态待确认'}${medInfoFor(m.name) ? ' · 点开看药物详情' : ''}`,
+    act: medInfoFor(m.name) ? 'med-detail' : 'med-edit'
   }));
 
   weightList().forEach(w => push({
@@ -286,11 +287,13 @@ function recCardHTML(ev, opts = {}) {
   const sumHTML = ev.summary
     ? `<p class="rc-sum">${esc(ev.summary)}</p>`
     : `<p class="rc-sum is-empty">未填写记录内容</p>`;
+  const indHTML = ev.indHTML ? `<div class="rc-ind">${ev.indHTML}</div>` : '';
   const inner = `${dateBlock}
     <div class="rc-body">
       ${chip ? `<div>${chip}</div>` : ''}
       <p class="rc-title">${esc(ev.title || '未命名')}</p>
       ${sumHTML}
+      ${indHTML}
       ${ev.meta ? `<p class="rc-meta">${esc(ev.meta)}</p>` : ''}
     </div>`;
 

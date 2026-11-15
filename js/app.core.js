@@ -673,6 +673,46 @@ function medsSorted() {
   return medications.slice().sort((a, b) => (a.status === 'active' ? -1 : 1) - (b.status === 'active' ? -1 : 1)
     || (b.startDate || '').localeCompare(a.startDate || '') || (a.name || '').localeCompare(b.name || ''));
 }
+/* ---------- 药物知识库查询（通用参考信息，不构成医嘱） ----------
+   medInfo 定义在 assets/data.js，按药名/通用名的关键词匹配到档案里的用药记录。
+   用于：① 简略列表里显示「适应症」标签；② 点进药物看详细功用/药理/不良反应。 */
+const MED_INFO_ALIASES = [
+  { key: '辅酶Q10', alias: ['辅酶q10', '辅酶q-10', 'q10', 'coenzyme'] },
+  { key: '吗丁啉', alias: ['吗丁啉', '多潘立酮', 'domperidone'] },
+  { key: '奥美拉挫', alias: ['奥美拉唑', '奥美拉挫', 'omeprazole'] },
+  { key: '叶黄素胶囊', alias: ['叶黄素', 'lutein'] },
+  { key: '非布司他', alias: ['非布司他', 'febuxostat'] },
+  { key: '康恩贝牌肠炎宁', alias: ['肠炎宁', '康恩贝'] }
+];
+function medInfoFor(name) {
+  const info = (ARCHIVE && ARCHIVE.medInfo) || {};
+  const n = String(name || '').toLowerCase().replace(/\s+/g, '');
+  if (!n) return null;
+  // 先按别名表定位 key，再取 medInfo
+  for (const a of MED_INFO_ALIASES) {
+    if (Object.prototype.hasOwnProperty.call(info, a.key)
+      && a.alias.some(al => n.includes(al.toLowerCase().replace(/\s+/g, '')))) {
+      return info[a.key];
+    }
+  }
+  // 回退：直接用 medInfo 的键做子串匹配
+  for (const k of Object.keys(info)) {
+    const kk = k.toLowerCase().replace(/\s+/g, '');
+    if (n.includes(kk) || kk.includes(n)) return info[k];
+  }
+  return null;
+}
+/* 简介用：把某药物的适应症渲染成若干 chip；无资料时返回空串 */
+function medIndicationChips(name, max) {
+  const info = medInfoFor(name);
+  if (!info || !Array.isArray(info.indications) || !info.indications.length) return '';
+  const lim = max || 4;
+  const chips = info.indications.slice(0, lim)
+    .map(t => `<span class="chip chip-sm chip--ind">${esc(t)}</span>`).join('');
+  const more = info.indications.length > lim
+    ? `<span class="chip chip-sm chip--ind" title="${esc(info.indications.slice(lim).join('、'))}">+${info.indications.length - lim}</span>` : '';
+  return `<div class="med-ind">${chips}${more}</div>`;
+}
 function severityLabel(sev) {
   const hit = ALLERGY_SEVS.find(s => s[0] === sev);
   return hit ? hit[1] : '';

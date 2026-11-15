@@ -6,12 +6,39 @@ import { Icon } from '../../components/icons';
 import { useStore } from '../../store/useStore';
 import { api } from '../../api/client';
 import type { SleepLog } from '../../api/types';
-import { TrendChart } from './TrendChart';
+import { EChart, type EChartPoint } from '../../lib/EChart';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const uid = () => 'sl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const numOrNull = (s: string) => (s === '' ? null : Number.isFinite(parseFloat(s)) ? parseFloat(s) : null);
 const PAGE = 20;
+
+// 睡眠指标分组：把一条睡眠记录拆成可切换的「分组标签」。
+// value 取该组对应的数值；晚间时间映射为连续小数（午后 <12 点 +24），
+// 这样 23:00 → 23、00:30 → 24.5，趋势线跨午夜不断。
+export type SleepGroupKey = 'duration' | 'score' | 'bedtime';
+const SLEEP_GROUPS: { k: SleepGroupKey; label: string; unit: string; low?: number; high?: number; target?: number; name: string; emptyText: string }[] = [
+  { k: 'duration', label: '睡眠时长', unit: 'h', low: 7, high: 9, name: '时长', emptyText: '还没有可画的睡眠时长记录' },
+  { k: 'score', label: '睡眠评分', unit: '分', low: 60, high: 100, name: '评分', emptyText: '记录里还没有睡眠评分（手动记录或多为设备未提供）' },
+  { k: 'bedtime', label: '入睡时间', unit: '时', target: 23, name: '入睡', emptyText: '记录里还没有入睡时间' },
+];
+const hmToHour = (hm: string): number | null => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
+  if (!m) return null;
+  const h = Number(m[1]) + Number(m[2]) / 60;
+  if (!Number.isFinite(h)) return null;
+  // 入睡时间以傍晚到次日凌晨为主：12 点前的时刻视为「次日凌晨」，+24 保持连续
+  return h < 12 ? h + 24 : h;
+};
+
+// 时间范围快捷选项：按「最近 N 天」裁剪图表数据点，配合底部 dataZoom 滑动条使用。
+export type SleepRangeKey = 'all' | '7' | '30' | '90';
+const SLEEP_RANGES: { k: SleepRangeKey; label: string; days: number | null }[] = [
+  { k: '7', label: '近 7 天', days: 7 },
+  { k: '30', label: '近 30 天', days: 30 },
+  { k: '90', label: '近 90 天', days: 90 },
+  { k: 'all', label: '全部', days: null },
+];
 
 // 小米运动健康 CSV 解析（对齐旧 parseSleepRows，js/app.modal.js:1123）
 function parseXiaomiSleepCSV(text: string): { rows: SleepLog[]; error?: string } {
@@ -61,6 +88,8 @@ export function SleepSeg() {
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
+  const [group, setGroup] = useState<SleepGroupKey>('duration');
+  const [range, setRange] = useState<SleepRangeKey>('all');
   const fileRef = useRef<HTMLInputElement>(null);
   const list = (data?.sleepLogs ?? []).slice().sort((a, b) => b.date.localeCompare(a.date));
 
@@ -68,7 +97,7 @@ export function SleepSeg() {
     setHead({
       eyebrow: 'SLEEP　睡眠',
       title: '睡眠',
-      sub: '小米手环睡眠汇总，一天一条；导入后按日看时长趋势',
+      sub: '小米手环睡眠汇总，一天一条；按「时长 / 评分 / 入睡」分组看趋势',
       actions: (
         <button className="btn btn-primary" type="button" onClick={() => fileRef.current?.click()}>
           <Icon name="upload" />
@@ -87,8 +116,23 @@ export function SleepSeg() {
   })();
   const last = withH[0];
   const lastScore = last && Number.isFinite(last.score as number) ? (last.score as number) : null;
-  const points = withH.slice().sort((a, b) => a.date.localeCompare(b.date)).map((s) => ({ date: s.date, value: Math.round((s.hours as number) * 10) / 10 }));
 
+  const groupMeta = SLEEP_GROUPS.find((g) => g.k === group) || SLEEP_GROUPS[0];
+  const rangeMeta = SLEEP_RANGES.find((r) => r.k === range) || SLEEP_RANGES[SLEEP_RANGES.length - 1];
+  const rangeCut = rangeMeta.days != null ? Date.now() - rangeMeta.days * 864e5 : null;
+  // 按当前分组计算图表数据点（并按该组有值的条数统计）
+  const points: EChartPoint[] = list
+    .slice()
+    .filter((s) => rangeCut == null || Date.parse(s.date + 'T00:00:00') >= rangeCut)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((s) => {
+      let value: number | null = null;
+      if (group === 'duration') value = Number.isFinite(s.hours as number) ? Math.round((s.hours as number) * 10) / 10 : null;
+      else if (group === 'score') value = Number.isFinite(s.score as number) ? (s.score as number) : null;
+      else value = hmToHour(s.bedtime);
+      return value == null ? null : { date: s.date, value };
+    })
+    .filter((p): p is EChartPoint => !!p);
   const totalPages = Math.max(1, Math.ceil(list.length / PAGE));
   const pageRows = list.slice((page - 1) * PAGE, page * PAGE);
 
@@ -172,16 +216,65 @@ export function SleepSeg() {
 
           <section className="card chart-card">
             <div className="chart-head">
-              <div className="chart-title"><h2>睡眠时长趋势</h2><p>共 {withH.length} 条记录　·　阴影为 7–9 小时一般参考区间</p></div>
+              <div className="chart-title">
+                <h2>睡眠趋势</h2>
+                <p>
+                  {rangeMeta.days != null ? `近 ${rangeMeta.days} 天` : '全部'} {points.length} 个数据点　·　
+                  {group === 'duration' && '阴影为 7–9 小时一般参考区间'}
+                  {group === 'score' && '设备自评评分，通常 0–100，阴影为 60 分以上参考'}
+                  {group === 'bedtime' && '入睡时刻折成小时，虚线为目标 23:00'}
+                  ㆍ可拖底部滑块选择区间
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <div className="segmented" role="tablist" aria-label="时间范围">
+                  {SLEEP_RANGES.map((r) => (
+                    <button
+                      key={r.k}
+                      role="tab"
+                      type="button"
+                      aria-selected={r.k === range}
+                      className={r.k === range ? 'on' : ''}
+                      onClick={() => setRange(r.k)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="segmented" role="tablist" aria-label="睡眠指标分组">
+                  {SLEEP_GROUPS.map((g) => (
+                    <button
+                      key={g.k}
+                      role="tab"
+                      type="button"
+                      aria-selected={g.k === group}
+                      className={g.k === group ? 'on' : ''}
+                      onClick={() => setGroup(g.k)}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="chart-box"><TrendChart points={points} low={7} high={9} unit="h" /></div>
+            <div className="chart-box">
+              <EChart
+                points={points}
+                low={groupMeta.low ?? null}
+                high={groupMeta.high ?? null}
+                target={groupMeta.target ?? null}
+                unit={groupMeta.unit}
+                name={groupMeta.name}
+                emptyText={groupMeta.emptyText}
+                zoom
+              />
+            </div>
           </section>
 
           <details className="detail-fold">
             <summary className="df-sum">
               <span className="df-title"><span className="df-chev" aria-hidden="true" />记录明细</span>
               <span className="df-count">{list.length} 条</span>
-              <span className="df-hint">展开查看</span>
             </summary>
             <div className="df-body">
               <div className="table-wrap">

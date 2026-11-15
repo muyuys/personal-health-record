@@ -94,6 +94,7 @@ function openRecordMenu(kind, id) {
   } else if (kind === 'med') {
     const m = pick();
     if (!m) return;
+    if (medInfoFor(m.name)) items.push(['查看药物详情', () => triggerAct('med-detail', { id: m.id })]);
     items.push(['修改用药', () => triggerAct('med-edit', { id: m.id })]);
     items.push(['删除用药', () => triggerAct('med-del', { id: m.id })]);
   } else if (kind === 'lab') {
@@ -130,6 +131,69 @@ function openRecordMenu(kind, id) {
       if (item) item[1]();
     });
   });
+}
+
+/* ---------- 药物详情：点进药物看功用 / 药理 / 不良反应等 ----------
+   数据来自 ARCHIVE.medInfo（通用参考），不替代医嘱；个人用法以用药记录为准。 */
+function openMedDetail(m) {
+  if (!m) return;
+  const info = medInfoFor(m.name);
+  const personal = [
+    m.dose ? ['剂量', m.dose] : null,
+    m.frequency ? ['频次', m.frequency] : null,
+    m.route ? ['途径', m.route] : null,
+    (m.startDate || m.endDate) ? ['起止', [m.startDate, m.endDate].filter(Boolean).join(' → ')] : null,
+    m.purpose ? ['用途', m.purpose] : null,
+    m.infoDate ? ['信息日期', m.infoDate] : null,
+    m.sourceRef ? ['来源', m.sourceRef] : null,
+    m.toVerify ? ['待核对', m.toVerify] : null,
+    m.note ? ['备注', m.note] : null
+  ].filter(Boolean);
+
+  const personalHTML = `<dl class="med-detail-list">
+    ${personal.map(([k, v]) => `<div class="med-detail-row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}
+  </dl>`;
+
+  if (!info) {
+    openModal(`
+      <div class="modal-head"><div><h2>${esc(m.name)}</h2><p>用药记录</p></div>
+      <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button></div>
+      <div class="med-detail-body">
+        <h3 class="med-detail-h">我的用法</h3>${personalHTML}
+        <div class="notice" style="margin-top:14px">${I.info}<p>暂无该药物的通用参考资料（功用 / 药理 / 不良反应）。可点「编辑」补充用法，或在药物知识库中登记。</p></div>
+      </div>`);
+    return;
+  }
+
+  const sect = (title, body, tone) => body
+    ? `<section class="med-detail-sec${tone ? ' ' + tone : ''}"><h3 class="med-detail-h">${esc(title)}</h3><p>${esc(body)}</p></section>` : '';
+
+  const indChips = (info.indications || []).map(t => `<span class="chip chip-sm chip--ind">${esc(t)}</span>`).join('');
+  const metaLine = [
+    info.generic ? `通用名：${info.generic}` : '',
+    info.brand ? `品牌／剂型：${info.brand}` : '',
+    info.category ? `分类：${info.category}` : ''
+  ].filter(Boolean).map(esc).join('　·　');
+
+  openModal(`
+    <div class="modal-head">
+      <div><h2>${esc(m.name)}</h2><p>药物资料 · 通用参考，不替代医嘱</p></div>
+      <button class="modal-close" data-act="close" aria-label="关闭">${I.close}</button>
+    </div>
+    <div class="med-detail-body">
+      ${metaLine ? `<p class="med-detail-meta">${metaLine}</p>` : ''}
+      ${indChips ? `<div class="med-detail-fields"><div class="med-detail-field"><span class="med-detail-k">适应症</span><div class="med-ind">${indChips}</div></div></div>` : ''}
+
+      <h3 class="med-detail-h">我的用法</h3>${personalHTML}
+
+      ${sect('功用 / 作用', info.functions)}
+      ${sect('药理作用', info.pharmacology)}
+      ${sect('不良反应', info.adverse, 'is-adverse')}
+      ${sect('禁忌与注意', info.cautions, 'is-caution')}
+      ${sect('用法要点', info.usage)}
+
+      <div class="notice" style="margin-top:16px">${I.info}<p>以上为通用药物资料，仅供参考，不构成诊断、处方或调整剂量的指令。个人实际用法以上方「我的用法」与用药记录为准；用药、停药、改剂量请遵医嘱。</p></div>
+    </div>`, 'modal--med-detail');
 }
 
 /* ---------- 记录一次 ---------- */

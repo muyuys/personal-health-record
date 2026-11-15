@@ -55,6 +55,12 @@ export const api = {
   // ---- 快照 / 整表替换（迁移期：非就诊模块用，与旧 server 数据层一致） ----
   getAll: () => request<Snapshot>('/api/all'),
   getOriginals: () => request<OriginalsItem[]>('/api/originals'),
+  labsAnalytes: () =>
+    request<{ analytes: { id: string; name: string; category: string; baseUnit: string; aliases: string[]; conversions: { from: string; factor: number; offset: number }[]; note?: string }[] }>('/api/labs/analytes'),
+  labsUnmapped: () =>
+    request<{ items: { name: string; count: number; units: string[]; category: string }[] }>('/api/labs/unmapped'),
+  labsMap: (name: string, analyteId: string) =>
+    request<{ ok: boolean }>('/api/labs/map', { method: 'POST', body: JSON.stringify({ name, analyteId }) }),
   importBackup: (data: unknown) =>
     request<{ ok: boolean; labs: number; reports: number }>('/api/import', {
       method: 'POST',
@@ -95,12 +101,22 @@ export const api = {
     reset: () => request<any>('/api/ai/reset', { method: 'POST', body: '{}' }),
     chat: (data: { question: string; model: string; refs: { kind: string; id: string }[] }) =>
       request<any>('/api/ai/chat', { method: 'POST', body: JSON.stringify(data) }),
-    parse: (dataUrl: string) =>
-      request<any>('/api/ai/parse', {
+    parse: (dataUrl: string) => {
+      // dataURL（data:image/jpeg;base64,XXXX）→ 原始二进制字节，后端按 magic 识别图片类型
+      let body: BodyInit = dataUrl;
+      const m = /^data:[^;]+;base64,(.*)$/s.exec(dataUrl);
+      if (m) {
+        const bin = atob(m[1]);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        body = bytes;
+      }
+      return request<any>('/api/ai/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
-        body: dataUrl,
-      }),
+        body,
+      });
+    },
     mcpConfig: () => request<any>('/api/mcp/config'),
     profiles: () => request<{ profiles: any[] }>('/api/profiles'),
     saveProfile: (data: { id?: string; name: string; relation?: string }) =>

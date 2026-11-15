@@ -1,0 +1,656 @@
+{
+  "_comment": "检验指标标准字典。analyte=标准指标；aliases=原始写法（会被 normalized 后匹配）；baseUnit=趋势统一基准单位（国内报告常用）；conversions=fromUnit->基准单位的换算（valueStd = value*factor + offset）；refLow/refHigh=成人常用参考区间（基准单位，仅供参考，以报告单为准）。",
+  "analytes": [
+    {
+      "id": "vitamin_d_25oh",
+      "name": "25-羟基维生素D",
+      "category": "维生素",
+      "baseUnit": "ng/mL",
+      "aliases": ["25OH维生素D", "25羟基维生素D", "25羟维生素D", "25-羟基维生素D", "维生素D", "25OHVitD", "25(OH)D", "VitD", "VD"],
+      "conversions": [
+        { "from": "nmol/L", "factor": 0.4006 },
+        { "from": "ng/ml", "factor": 1 },
+        { "from": "ng/mL", "factor": 1 }
+      ],
+      "note": "不同方法(电化学发光/LC-MS/MS)参考区间不同，谨慎对比",
+      "refLow": 20,
+      "refHigh": 50
+    },
+    {
+      "id": "glucose",
+      "name": "葡萄糖",
+      "category": "糖代谢",
+      "baseUnit": "mmol/L",
+      "aliases": ["葡萄糖", "血糖", "空腹血糖", "GLU"],
+      "conversions": [
+        { "from": "mg/dL", "factor": 0.0555 },
+        { "from": "mg/dl", "factor": 0.0555 },
+        { "from": "mmol/L", "factor": 1 }
+      ],
+      "refLow": 3.9,
+      "refHigh": 6.1
+    },
+    {
+      "id": "tc",
+      "name": "总胆固醇",
+      "category": "血脂",
+      "baseUnit": "mmol/L",
+      "aliases": ["总胆固醇", "胆固醇", "TC", "CHOL"],
+      "conversions": [
+        { "from": "mg/dL", "factor": 0.02586 },
+        { "from": "mg/dl", "factor": 0.02586 },
+        { "from": "mmol/L", "factor": 1 }
+      ],
+      "refLow": 2.8,
+      "refHigh": 5.2
+    },
+    {
+      "id": "tg",
+      "name": "甘油三酯",
+      "category": "血脂",
+      "baseUnit": "mmol/L",
+      "aliases": ["甘油三酯", "三酰甘油", "TG", "TRIG"],
+      "conversions": [
+        { "from": "mg/dL", "factor": 0.01129 },
+        { "from": "mg/dl", "factor": 0.01129 },
+        { "from": "mmol/L", "factor": 1 }
+      ],
+      "refLow": 0.4,
+      "refHigh": 1.7
+    },
+    {
+      "id": "ldl_c",
+      "name": "低密度脂蛋白胆固醇",
+      "category": "血脂",
+      "baseUnit": "mmol/L",
+      "aliases": ["低密度脂蛋白胆固醇", "低密度脂蛋白", "LDL-C", "LDL", "LDLCH"],
+      "conversions": [
+        { "from": "mg/dL", "factor": 0.02586 },
+        { "from": "mg/dl", "factor": 0.02586 },
+        { "from": "mmol/L", "factor": 1 }
+      ],
+      "refLow": 0,
+      "refHigh": 3.4
+    },
+    {
+      "id": "hdl_c",
+      "name": "高密度脂蛋白胆固醇",
+      "category": "血脂",
+      "baseUnit": "mmol/L",
+      "aliases": ["高密度脂蛋白胆固醇", "高密度脂蛋白", "HDL-C", "HDL", "HDLCH"],
+      "conversions": [
+        { "from": "mg/dL", "factor": 0.02586 },
+        { "from": "mg/dl", "factor": 0.02586 },
+        { "from": "mmol/L", "factor": 1 }
+      ],
+      "refLow": 1.0,
+      "refHigh": 2.0
+    },
+    {
+      "id": "hba1c",
+      "name": "糖化血红蛋白",
+      "category": "糖代谢",
+      "baseUnit": "%",
+      "aliases": ["糖化血红蛋白", "HbA1c", "A1C", "糖化血红蛋白A1c"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "note": "IFCC(mmol/mol)与NGSP(%)为不同方法，需专门换算，暂不自动处理",
+      "refLow": 4.0,
+      "refHigh": 6.0
+    },
+    {
+      "id": "hb",
+      "name": "血红蛋白",
+      "category": "血常规",
+      "baseUnit": "g/L",
+      "aliases": ["血红蛋白", "Hb", "HGB", "HB"],
+      "conversions": [
+        { "from": "g/dL", "factor": 10 },
+        { "from": "g/dl", "factor": 10 },
+        { "from": "g/L", "factor": 1 }
+      ],
+      "refLow": 130,
+      "refHigh": 175
+    },
+    {
+      "id": "wbc",
+      "name": "白细胞计数",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["白细胞", "白细胞计数", "WBC"],
+      "conversions": [
+        { "from": "10^9/L", "factor": 1 },
+        { "from": "10^9/l", "factor": 1 },
+        { "from": "/ul", "factor": 0.001 },
+        { "from": "/uL", "factor": 0.001 }
+      ],
+      "note": "尿沉渣白细胞(/ul,/HP)与血常规白细胞计数非同一指标，按名称区分",
+      "refLow": 3.5,
+      "refHigh": 9.5
+    },
+    {
+      "id": "creatinine",
+      "name": "肌酐",
+      "category": "肾功能",
+      "baseUnit": "μmol/L",
+      "aliases": ["肌酐", "血肌酐", "CREA", "Cr", "SCr"],
+      "conversions": [
+        { "from": "μmol/L", "factor": 1 },
+        { "from": "umol/L", "factor": 1 },
+        { "from": "mg/dL", "factor": 88.4 },
+        { "from": "mg/dl", "factor": 88.4 }
+      ],
+      "refLow": 57,
+      "refHigh": 111
+    },
+    {
+      "id": "urea",
+      "name": "尿素",
+      "category": "肾功能",
+      "baseUnit": "mmol/L",
+      "aliases": ["尿素", "尿素氮", "BUN", "UREA"],
+      "conversions": [
+        { "from": "mmol/L", "factor": 1 },
+        { "from": "mg/dL", "factor": 0.357 },
+        { "from": "mg/dl", "factor": 0.357 }
+      ],
+      "note": "尿素氮(BUN)与尿素换算含氮/尿素分子量差异，若报告为BUN需另核",
+      "refLow": 2.9,
+      "refHigh": 8.2
+    },
+    {
+      "id": "uric_acid",
+      "name": "尿酸",
+      "category": "肾功能",
+      "baseUnit": "μmol/L",
+      "aliases": ["尿酸", "UA", "URIC"],
+      "conversions": [
+        { "from": "μmol/L", "factor": 1 },
+        { "from": "umol/L", "factor": 1 },
+        { "from": "mg/dL", "factor": 59.48 },
+        { "from": "mg/dl", "factor": 59.48 }
+      ],
+      "refLow": 208,
+      "refHigh": 428
+    },
+    {
+      "id": "cystatin_c",
+      "name": "胱抑素C",
+      "category": "肾功能",
+      "baseUnit": "mg/L",
+      "aliases": ["胱抑素C", "半胱氨酸蛋白酶抑制剂C", "CysC", "Cystatin C"],
+      "conversions": [
+        { "from": "mg/L", "factor": 1 },
+        { "from": "mg/l", "factor": 1 },
+        { "from": "mg/dL", "factor": 10 },
+        { "from": "mg/dl", "factor": 10 }
+      ],
+      "refLow": 0.51,
+      "refHigh": 1.09
+    },
+    {
+      "id": "alt",
+      "name": "丙氨酸氨基转移酶",
+      "category": "肝功能",
+      "baseUnit": "U/L",
+      "aliases": ["丙氨酸氨基转移酶", "谷丙转氨酶", "ALT", "GPT"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 9,
+      "refHigh": 50
+    },
+    {
+      "id": "ast",
+      "name": "天冬氨酸氨基转移酶",
+      "category": "肝功能",
+      "baseUnit": "U/L",
+      "aliases": ["天冬氨酸氨基转移酶", "谷草转氨酶", "AST", "GOT"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 15,
+      "refHigh": 40
+    },
+    {
+      "id": "ggt",
+      "name": "γ-谷氨酰转肽酶",
+      "category": "肝功能",
+      "baseUnit": "U/L",
+      "aliases": ["γ-谷氨酰转肽酶", "谷氨酰转肽酶", "γ-GT", "GGT", "r-GT"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 10,
+      "refHigh": 60
+    },
+    {
+      "id": "alp",
+      "name": "碱性磷酸酶",
+      "category": "肝功能",
+      "baseUnit": "U/L",
+      "aliases": ["碱性磷酸酶", "ALP", "AKP"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 45,
+      "refHigh": 125
+    },
+    {
+      "id": "tbil",
+      "name": "总胆红素",
+      "category": "肝功能",
+      "baseUnit": "μmol/L",
+      "aliases": ["总胆红素", "TBIL", "T-BIL", "TBil"],
+      "conversions": [
+        { "from": "μmol/L", "factor": 1 },
+        { "from": "umol/L", "factor": 1 },
+        { "from": "mg/dL", "factor": 17.1 },
+        { "from": "mg/dl", "factor": 17.1 }
+      ],
+      "refLow": 3.4,
+      "refHigh": 20.5
+    },
+    {
+      "id": "dbil",
+      "name": "直接胆红素",
+      "category": "肝功能",
+      "baseUnit": "μmol/L",
+      "aliases": ["直接胆红素", "DBIL", "D-BIL", "结合胆红素"],
+      "conversions": [
+        { "from": "μmol/L", "factor": 1 },
+        { "from": "umol/L", "factor": 1 },
+        { "from": "mg/dL", "factor": 17.1 },
+        { "from": "mg/dl", "factor": 17.1 }
+      ],
+      "refLow": 0,
+      "refHigh": 6.8
+    },
+    {
+      "id": "tp",
+      "name": "总蛋白",
+      "category": "肝功能",
+      "baseUnit": "g/L",
+      "aliases": ["总蛋白", "TP"],
+      "conversions": [{ "from": "g/L", "factor": 1 }, { "from": "g/dL", "factor": 10 }, { "from": "g/dl", "factor": 10 }],
+      "refLow": 65,
+      "refHigh": 85
+    },
+    {
+      "id": "alb",
+      "name": "白蛋白",
+      "category": "肝功能",
+      "baseUnit": "g/L",
+      "aliases": ["白蛋白", "ALB"],
+      "conversions": [{ "from": "g/L", "factor": 1 }, { "from": "g/dL", "factor": 10 }, { "from": "g/dl", "factor": 10 }],
+      "refLow": 40,
+      "refHigh": 55
+    },
+    {
+      "id": "prealb",
+      "name": "前白蛋白",
+      "category": "肝功能",
+      "baseUnit": "mg/L",
+      "aliases": ["前白蛋白", "PA", "PALB"],
+      "conversions": [{ "from": "mg/L", "factor": 1 }, { "from": "mg/dl", "factor": 10 }, { "from": "mg/dL", "factor": 10 }],
+      "refLow": 200,
+      "refHigh": 400
+    },
+    {
+      "id": "tba",
+      "name": "总胆汁酸",
+      "category": "肝功能",
+      "baseUnit": "μmol/L",
+      "aliases": ["总胆汁酸", "TBA"],
+      "conversions": [{ "from": "μmol/L", "factor": 1 }, { "from": "umol/L", "factor": 1 }],
+      "refLow": 0,
+      "refHigh": 10
+    },
+    {
+      "id": "egfr",
+      "name": "估算肾小球滤过率",
+      "category": "肾功能",
+      "baseUnit": "mL/min/1.73m²",
+      "aliases": ["估算肾小球滤过率", "eGFR", "肾小球滤过率"],
+      "conversions": [{ "from": "mL/min/1.73m²", "factor": 1 }, { "from": "—", "factor": 1 }],
+      "refLow": 90,
+      "refHigh": null
+    },
+    {
+      "id": "trop_i",
+      "name": "高敏肌钙蛋白I",
+      "category": "心肌标志物",
+      "baseUnit": "ng/L",
+      "aliases": ["高敏肌钙蛋白I", "肌钙蛋白I", "hs-cTnI", "TnI", "cTnI"],
+      "conversions": [{ "from": "ng/L", "factor": 1 }, { "from": "pg/mL", "factor": 1 }],
+      "note": "不同厂商平台参考上限不同，谨慎对比",
+      "refLow": null,
+      "refHigh": 34.2
+    },
+    {
+      "id": "potassium",
+      "name": "钾",
+      "category": "电解质",
+      "baseUnit": "mmol/L",
+      "aliases": ["钾 K", "钾", "K", "血清钾"],
+      "conversions": [{ "from": "mmol/L", "factor": 1 }],
+      "refLow": 3.5,
+      "refHigh": 5.5
+    },
+    {
+      "id": "sodium",
+      "name": "钠",
+      "category": "电解质",
+      "baseUnit": "mmol/L",
+      "aliases": ["钠 NA", "钠", "NA", "血清钠"],
+      "conversions": [{ "from": "mmol/L", "factor": 1 }],
+      "refLow": 137,
+      "refHigh": 147
+    },
+    {
+      "id": "chloride",
+      "name": "氯",
+      "category": "电解质",
+      "baseUnit": "mmol/L",
+      "aliases": ["氯 CL", "氯", "CL", "血清氯"],
+      "conversions": [{ "from": "mmol/L", "factor": 1 }],
+      "refLow": 99,
+      "refHigh": 110
+    },
+    {
+      "id": "calcium",
+      "name": "钙",
+      "category": "电解质",
+      "baseUnit": "mmol/L",
+      "aliases": ["钙 CA", "钙", "CA", "血清钙", "总钙"],
+      "conversions": [
+        { "from": "mmol/L", "factor": 1 },
+        { "from": "mg/dL", "factor": 0.2495 },
+        { "from": "mg/dl", "factor": 0.2495 }
+      ],
+      "refLow": 2.11,
+      "refHigh": 2.52
+    },
+    {
+      "id": "co2cp",
+      "name": "CO2结合力",
+      "category": "电解质",
+      "baseUnit": "mmol/L",
+      "aliases": ["CO2结合力", "二氧化碳结合力", "CO2CP"],
+      "conversions": [{ "from": "mmol/L", "factor": 1 }],
+      "refLow": 22,
+      "refHigh": 29
+    },
+    {
+      "id": "phosphorus",
+      "name": "无机磷",
+      "category": "电解质",
+      "baseUnit": "mmol/L",
+      "aliases": ["无机磷", "磷", "PHOS", "P"],
+      "conversions": [{ "from": "mmol/L", "factor": 1 }, { "from": "mg/dL", "factor": 0.3229 }, { "from": "mg/dl", "factor": 0.3229 }],
+      "refLow": 0.85,
+      "refHigh": 1.51
+    },
+    {
+      "id": "ck",
+      "name": "肌酸激酶",
+      "category": "心肌/酶",
+      "baseUnit": "U/L",
+      "aliases": ["肌酸激酶", "CK", "CPK"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 50,
+      "refHigh": 310
+    },
+    {
+      "id": "ckmb",
+      "name": "肌酸激酶同工酶MB",
+      "category": "心肌/酶",
+      "baseUnit": "U/L",
+      "aliases": ["肌酸激酶同工酶MB", "肌酸激酶同工酶", "CKMB", "CK-MB"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 0,
+      "refHigh": 25
+    },
+    {
+      "id": "ldh",
+      "name": "乳酸脱氢酶",
+      "category": "心肌/酶",
+      "baseUnit": "U/L",
+      "aliases": ["乳酸脱氢酶", "LDH", "LD"],
+      "conversions": [{ "from": "U/L", "factor": 1 }, { "from": "IU/L", "factor": 1 }],
+      "refLow": 120,
+      "refHigh": 250
+    },
+    {
+      "id": "lp_a",
+      "name": "脂蛋白a",
+      "category": "血脂",
+      "baseUnit": "mg/dL",
+      "aliases": ["脂蛋白a", "脂蛋白(a)", "LPa", "LP(a)", "Lp(a)"],
+      "conversions": [{ "from": "mg/dl", "factor": 1 }, { "from": "mg/dL", "factor": 1 }],
+      "refLow": 0,
+      "refHigh": 30
+    },
+    {
+      "id": "ibil",
+      "name": "间接胆红素",
+      "category": "肝功能",
+      "baseUnit": "μmol/L",
+      "aliases": ["间接胆红素", "IBIL", "I-BIL", "非结合胆红素"],
+      "conversions": [{ "from": "μmol/L", "factor": 1 }, { "from": "umol/L", "factor": 1 }, { "from": "mg/dL", "factor": 17.1 }, { "from": "mg/dl", "factor": 17.1 }],
+      "refLow": 0,
+      "refHigh": null
+    },
+    {
+      "id": "ag_ratio",
+      "name": "白球比",
+      "category": "肝功能",
+      "baseUnit": "",
+      "aliases": ["白球比", "白球比值", "A/G", "AGR"],
+      "conversions": [{ "from": "", "factor": 1 }],
+      "refLow": 1.2,
+      "refHigh": 2.4
+    },
+    {
+      "id": "lym_pct",
+      "name": "淋巴细胞百分比",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["淋巴细胞百分比", "淋巴细胞%", "LYM%", "LYMPH%"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 20,
+      "refHigh": 50
+    },
+    {
+      "id": "mon_pct",
+      "name": "单核细胞百分比",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["单核细胞百分比", "单核细胞%", "MON%", "MONO%"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 3,
+      "refHigh": 10
+    },
+    {
+      "id": "neu_pct",
+      "name": "中性粒细胞百分比",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["中性粒细胞百分比", "中性粒细胞%", "NEU%", "NEUT%"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 40,
+      "refHigh": 75
+    },
+    {
+      "id": "eos_pct",
+      "name": "嗜酸性粒细胞百分比",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["嗜酸性粒细胞百分比", "嗜酸性细胞%", "嗜酸性粒细胞%", "EOS%"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 0.4,
+      "refHigh": 8
+    },
+    {
+      "id": "bas_pct",
+      "name": "嗜碱性粒细胞百分比",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["嗜碱性粒细胞百分比", "嗜碱性细胞%", "嗜碱性粒细胞%", "BAS%"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 0,
+      "refHigh": 1
+    },
+    {
+      "id": "lym_abs",
+      "name": "淋巴细胞绝对值",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["淋巴细胞绝对值", "淋巴细胞#", "LYM#", "LYMPH#"],
+      "conversions": [{ "from": "10^9/L", "factor": 1 }, { "from": "10^9/l", "factor": 1 }],
+      "refLow": 1.1,
+      "refHigh": 3.2
+    },
+    {
+      "id": "mon_abs",
+      "name": "单核细胞绝对值",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["单核细胞绝对值", "单核细胞#", "MONO#", "MON#"],
+      "conversions": [{ "from": "10^9/L", "factor": 1 }, { "from": "10^9/l", "factor": 1 }],
+      "refLow": 0.1,
+      "refHigh": 0.6
+    },
+    {
+      "id": "neu_abs",
+      "name": "中性粒细胞绝对值",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["中性粒细胞绝对值", "中性粒细胞#", "NEU#", "NEUT#"],
+      "conversions": [{ "from": "10^9/L", "factor": 1 }, { "from": "10^9/l", "factor": 1 }],
+      "refLow": 1.8,
+      "refHigh": 6.3
+    },
+    {
+      "id": "eos_abs",
+      "name": "嗜酸性粒细胞绝对值",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["嗜酸性粒细胞绝对值", "嗜酸性细胞绝对值", "嗜酸细胞绝对值", "EOS#"],
+      "conversions": [{ "from": "10^9/L", "factor": 1 }, { "from": "10^9/l", "factor": 1 }],
+      "refLow": 0.02,
+      "refHigh": 0.52
+    },
+    {
+      "id": "bas_abs",
+      "name": "嗜碱性粒细胞绝对值",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["嗜碱性粒细胞绝对值", "嗜碱性细胞绝对值", "嗜碱细胞绝对值", "BAS#"],
+      "conversions": [{ "from": "10^9/L", "factor": 1 }, { "from": "10^9/l", "factor": 1 }],
+      "refLow": 0,
+      "refHigh": 0.06
+    },
+    {
+      "id": "rbc",
+      "name": "红细胞计数",
+      "category": "血常规",
+      "baseUnit": "10^12/L",
+      "aliases": ["红细胞计数", "红细胞", "RBC"],
+      "conversions": [{ "from": "10^12/L", "factor": 1 }, { "from": "10^12/l", "factor": 1 }],
+      "refLow": 4.5,
+      "refHigh": 5.8
+    },
+    {
+      "id": "hct",
+      "name": "红细胞压积",
+      "category": "血常规",
+      "baseUnit": "",
+      "aliases": ["红细胞压积", "红细胞比容", "HCT", "PCV"],
+      "conversions": [{ "from": "", "factor": 1 }, { "from": "%", "factor": 0.01 }],
+      "refLow": 0.4,
+      "refHigh": 0.5
+    },
+    {
+      "id": "mcv",
+      "name": "平均红细胞体积",
+      "category": "血常规",
+      "baseUnit": "fL",
+      "aliases": ["平均红细胞体积", "MCV"],
+      "conversions": [{ "from": "fL", "factor": 1 }, { "from": "fl", "factor": 1 }],
+      "refLow": 82,
+      "refHigh": 100
+    },
+    {
+      "id": "mch",
+      "name": "平均红细胞血红蛋白量",
+      "category": "血常规",
+      "baseUnit": "pg",
+      "aliases": ["平均红细胞血红蛋白量", "平均血红蛋白量", "MCH"],
+      "conversions": [{ "from": "pg", "factor": 1 }],
+      "refLow": 27,
+      "refHigh": 34
+    },
+    {
+      "id": "mchc",
+      "name": "平均红细胞血红蛋白浓度",
+      "category": "血常规",
+      "baseUnit": "g/L",
+      "aliases": ["平均红细胞血红蛋白浓度", "平均血红蛋白浓度", "MCHC"],
+      "conversions": [{ "from": "g/L", "factor": 1 }],
+      "refLow": 316,
+      "refHigh": 354
+    },
+    {
+      "id": "rdw",
+      "name": "红细胞分布宽度",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["红细胞分布宽度", "红细胞体积分布宽度", "红细胞体积宽度", "RDW"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 11.5,
+      "refHigh": 15.5
+    },
+    {
+      "id": "plt",
+      "name": "血小板计数",
+      "category": "血常规",
+      "baseUnit": "10^9/L",
+      "aliases": ["血小板计数", "血小板", "PLT"],
+      "conversions": [{ "from": "10^9/L", "factor": 1 }, { "from": "10^9/l", "factor": 1 }],
+      "refLow": 125,
+      "refHigh": 350
+    },
+    {
+      "id": "mpv",
+      "name": "平均血小板体积",
+      "category": "血常规",
+      "baseUnit": "fL",
+      "aliases": ["平均血小板体积", "MPV"],
+      "conversions": [{ "from": "fL", "factor": 1 }, { "from": "fl", "factor": 1 }],
+      "refLow": 6.8,
+      "refHigh": 13.5
+    },
+    {
+      "id": "pct_plt",
+      "name": "血小板比积",
+      "category": "血常规",
+      "baseUnit": "",
+      "aliases": ["血小板比积", "血小板压积", "PCT"],
+      "conversions": [{ "from": "", "factor": 1 }, { "from": "%", "factor": 0.01 }],
+      "refLow": 0,
+      "refHigh": 0.99
+    },
+    {
+      "id": "pdw",
+      "name": "平均血小板分布宽度",
+      "category": "血常规",
+      "baseUnit": "fL",
+      "aliases": ["平均血小板分布宽度", "平均血小板宽度", "血小板分布宽度", "PDW"],
+      "conversions": [{ "from": "fL", "factor": 1 }, { "from": "fl", "factor": 1 }],
+      "refLow": 9.8,
+      "refHigh": 17
+    },
+    {
+      "id": "p_lcr",
+      "name": "大血小板比率",
+      "category": "血常规",
+      "baseUnit": "%",
+      "aliases": ["大血小板比率", "大型血小板比率", "P-LCR", "PLCR"],
+      "conversions": [{ "from": "%", "factor": 1 }],
+      "refLow": 13,
+      "refHigh": 43
+    }
+  ]
+}

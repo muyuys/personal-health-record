@@ -16,6 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from .. import legacy
+from .. import lab_std
 from ..deps import profile_context, resolve_profile
 
 router = APIRouter(prefix="/api", tags=["snapshot"])
@@ -24,7 +25,36 @@ router = APIRouter(prefix="/api", tags=["snapshot"])
 @router.get("/all")
 def get_all(pid: str = Depends(resolve_profile)):
     with profile_context(pid):
-        return legacy.get_all()
+        snap = legacy.get_all()
+    # 检验指标标准化：为每条 lab 派生 analyteId/valueStd/lowStd/highStd/method/stdStatus
+    snap["labs"] = lab_std.enrich_labs(snap.get("labs") or [])
+    return snap
+
+
+@router.get("/labs/analytes")
+def labs_analytes():
+    """标准指标字典全量（给前端筛选/维护页用）。"""
+    return {"analytes": lab_std.list_analytes()}
+
+
+@router.get("/labs/unmapped")
+def labs_unmapped(pid: str = Depends(resolve_profile)):
+    """未识别指标清单（stdStatus=unmapped 的项目名聚合）。"""
+    with profile_context(pid):
+        snap = legacy.get_all()
+    return {"items": lab_std.unmapped_summary(snap.get("labs") or [])}
+
+
+@router.post("/labs/map")
+def labs_map(payload: dict = Body(...), pid: str = Depends(resolve_profile)):
+    """人工把原始项目名映射到标准指标。payload={name, analyteId}。"""
+    name = (payload or {}).get("name", "")
+    aid = (payload or {}).get("analyteId", "")
+    try:
+        lab_std.map_override(name, aid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
 
 
 @router.get("/originals")

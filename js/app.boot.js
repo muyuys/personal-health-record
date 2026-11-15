@@ -461,6 +461,11 @@ document.addEventListener('click', e => {
     case 'med-del':
       deleteMedication(el.dataset.id);
       break;
+    case 'med-detail': {
+      const mm = medications.find(x => x.id === el.dataset.id);
+      if (mm) openMedDetail(mm);
+      break;
+    }
     case 'export':
       exportAll();
       break;
