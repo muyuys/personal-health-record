@@ -77,6 +77,11 @@ def image_dir():
     return IMG_DIR if _profile_scope.get() == "default" else db_path().parent / "files"
 
 
+def diet_photo_dir():
+    """饮食照片备用目录（当 image_dir 不可写时落在此处）。"""
+    return ROOT / "data" / "diet-photos"
+
+
 # 报告原件可查看的文件后缀（图片 / PDF / DICOM）。只做清单与打开，不改动文件。
 ORIG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".pdf", ".dcm", ".dicom", ".tif", ".tiff"}
 
@@ -226,6 +231,7 @@ def init_db():
           snack TEXT DEFAULT '',
           kcal_center REAL, kcal_low REAL, kcal_high REAL, budget REAL,
           completeness TEXT DEFAULT '', summary TEXT DEFAULT '', note TEXT DEFAULT '',
+          photo TEXT DEFAULT '', meal TEXT DEFAULT '', nutrition TEXT DEFAULT '',
           created_at INTEGER
         );
         CREATE INDEX IF NOT EXISTS idx_diet_day_date ON diet_day(date);
@@ -297,6 +303,12 @@ def init_db():
         for _col in ("info_date", "source_ref", "to_verify"):
             if _col not in mcols:
                 c.execute(f"ALTER TABLE medication ADD COLUMN {_col} TEXT DEFAULT ''")
+        # 增量迁移（幂等）：老库的 diet_day 补上 照片 / 餐次 / 营养素 三列（饮食照片 AI 估算）。
+        # 只 ADD COLUMN，绝不 DROP / 清空；新库已在 CREATE TABLE 里带上这些列。
+        dcols = {row[1] for row in c.execute("PRAGMA table_info(diet_day)")}
+        for _col in ("photo", "meal", "nutrition"):
+            if _col not in dcols:
+                c.execute(f"ALTER TABLE diet_day ADD COLUMN {_col} TEXT DEFAULT ''")
 
 
 # ---------------------------------------------------------------- 自动备份
@@ -486,7 +498,7 @@ def get_all():
             "SELECT id,date,morning_weight AS morningWeight,weight_note AS weightNote,"
             "waist,sleep,hunger,ankle,breakfast,lunch,dinner,snack,"
             "kcal_center AS kcalCenter,kcal_low AS kcalLow,kcal_high AS kcalHigh,budget,"
-            "completeness,summary,note,created_at AS createdAt "
+            "completeness,summary,note,photo,meal,nutrition,created_at AS createdAt "
             "FROM diet_day ORDER BY date DESC, created_at DESC")]
         diet_weeks = [dict(r) for r in c.execute(
             "SELECT id,week_start AS weekStart,week_end AS weekEnd,review_date AS reviewDate,"
@@ -632,10 +644,24 @@ FILE_URL = re.compile(r"^/files/([A-Za-z0-9._-]+)(?:\?profile=[A-Za-z0-9_-]+)?$"
 def _drop_file(name):
     if not name:
         return
+    for d in (image_dir(), ROOT / "data" / "diet-photos"):
+        try:
+            (d / name).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _write_bytes_with_fallback(name, raw):
+    """写文件到 image_dir()；若该目录对本进程不可写（如被 ACL 锁住），
+    自动落到备用目录 data/diet-photos/ 并返回其路径。两处都在 /files/ 命名空间下。"""
     try:
-        (image_dir() / name).unlink(missing_ok=True)
-    except OSError:
-        pass
+        (image_dir() / name).write_bytes(raw)
+        return image_dir() / name
+    except (PermissionError, OSError):
+        alt = ROOT / "data" / "diet-photos"
+        alt.mkdir(parents=True, exist_ok=True)
+        (alt / name).write_bytes(raw)
+        return alt / name
 
 
 def _store_file(report_id, data_url):
@@ -646,7 +672,7 @@ def _store_file(report_id, data_url):
     ext = "png" if m.group(1) == "png" else ("webp" if m.group(1) == "webp" else "jpg")
     raw = base64.b64decode(m.group(2))
     name = f"{report_id}.{ext}"
-    (image_dir() / name).write_bytes(raw)
+    _write_bytes_with_fallback(name, raw)
     return "/files/" + name
 
 
@@ -823,22 +849,41 @@ def replace_symptoms(rows):
 
 
 def replace_diet_days(rows):
-    """整表替换减重每日记录（事务内）。数值列可空，空白保持 NULL，不补造 0。"""
+    """整表替换减重每日记录（事务内）。数值列可空，空白保持 NULL，不补造 0。
+    photo 字段若为 dataURL 则落成本地文件（/files/xx），DB 只存路径；
+    将来换用外部存储时，只需在此处把 _store_file 换成外部上传、存外链即可。"""
     with _db_lock, connect() as c:
+        old = {r["id"]: r["photo"] for r in c.execute("SELECT id,photo FROM diet_day")
+               if (r["photo"] or "").startswith("/files/")}
         c.execute("DELETE FROM diet_day")
-        c.executemany(
-            "INSERT OR REPLACE INTO diet_day (id,date,morning_weight,weight_note,waist,sleep,"
-            "hunger,ankle,breakfast,lunch,dinner,snack,kcal_center,kcal_low,kcal_high,budget,"
-            "completeness,summary,note,created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(_s(r.get("id")) or f"dd-{i}", _s(r.get("date")),
+        prepared = []
+        for i, r in enumerate(rows or []):
+            rid = _s(r.get("id")) or f"dd-{i}"
+            ph = r.get("photo") or ""
+            if DATA_URL.match(ph):
+                new_ph = _store_file(rid, ph) or ""
+            elif FILE_URL.match(ph):
+                new_ph = "/files/" + FILE_URL.match(ph).group(1)
+            else:
+                new_ph = _s(ph)
+            # 换图/删图清理旧文件
+            prev = old.get(rid, "")
+            pm = FILE_URL.match(prev or "")
+            if pm and ("/files/" + pm.group(1)) != new_ph:
+                _drop_file(pm.group(1))
+            prepared.append((rid, _s(r.get("date")),
               _num(r.get("morningWeight")), _s(r.get("weightNote")), _num(r.get("waist")),
               _num(r.get("sleep")), _s(r.get("hunger")), _s(r.get("ankle")),
               _s(r.get("breakfast")), _s(r.get("lunch")), _s(r.get("dinner")), _s(r.get("snack")),
               _num(r.get("kcalCenter")), _num(r.get("kcalLow")), _num(r.get("kcalHigh")),
               _num(r.get("budget")), _s(r.get("completeness")), _s(r.get("summary")),
-              _s(r.get("note")), int(r.get("createdAt") or 0) or int(time.time() * 1000))
-             for i, r in enumerate(rows or [])])
+              _s(r.get("note")), new_ph, _s(r.get("meal")), _s(r.get("nutrition")),
+              int(r.get("createdAt") or 0) or int(time.time() * 1000)))
+        c.executemany(
+            "INSERT OR REPLACE INTO diet_day (id,date,morning_weight,weight_note,waist,sleep,"
+            "hunger,ankle,breakfast,lunch,dinner,snack,kcal_center,kcal_low,kcal_high,budget,"
+            "completeness,summary,note,photo,meal,nutrition,created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", prepared)
         c.execute("INSERT OR REPLACE INTO meta (k,v) VALUES ('savedAt',?)", (str(int(time.time() * 1000)),))
 
 

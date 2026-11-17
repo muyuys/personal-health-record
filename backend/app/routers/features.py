@@ -163,6 +163,20 @@ async def ai_parse(request: Request):
         raise HTTPException(502, '模型未返回可解析的报告，请换用支持多模态与 JSON 输出的模型后重试')
 
 
+@router.post("/ai/meal")
+async def ai_meal(request: Request):
+    pid = _scope_from(request)
+    _guard(pid)
+    raw = await request.body()
+    try:
+        with hf.scope(pid):
+            return hf.parse_meal(raw)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(502, '模型未返回可解析的餐食估算，请换用支持多模态与 JSON 输出的模型后重试')
+
+
 @router.get("/mcp/config")
 def mcp_config(request: Request):
     token_path = hs.DB_PATH.parent / (hs.DB_PATH.stem + '.agent-token')

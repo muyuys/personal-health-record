@@ -117,6 +117,22 @@ export const api = {
         body,
       });
     },
+    meal: (dataUrl: string) => {
+      // 饮食照片 → 热量范围与营养素估算（同上：dataURL 转二进制字节）
+      let body: BodyInit = dataUrl;
+      const m = /^data:[^;]+;base64,(.*)$/s.exec(dataUrl);
+      if (m) {
+        const bin = atob(m[1]);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        body = bytes;
+      }
+      return request<any>('/api/ai/meal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body,
+      });
+    },
     mcpConfig: () => request<any>('/api/mcp/config'),
     profiles: () => request<{ profiles: any[] }>('/api/profiles'),
     saveProfile: (data: { id?: string; name: string; relation?: string }) =>

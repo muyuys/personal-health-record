@@ -55,11 +55,15 @@ def health():
 
 @app.get("/files/{name}")
 def serve_file(name: str, pid: str = Depends(resolve_profile)):
-    """报告原件图片：对齐旧 health_server 的 /files/<name>（从当前成员 image_dir 读取）。"""
+    """报告原件 / 饮食照片：对齐旧 health_server 的 /files/<name>。
+    先查成员 image_dir，未命中再查 data/diet-photos（饮食照片备用目录）。"""
     from . import legacy
     safe = Path(name).name  # 防路径穿越
     with profile_context(pid):
-        target = Path(legacy.image_dir()) / safe
+        primary = Path(legacy.image_dir()) / safe
+    target = primary
+    if not target.is_file():
+        target = Path(legacy.diet_photo_dir()) / safe
     if not target.is_file():
         raise HTTPException(404, "文件不存在")
     return FileResponse(str(target))

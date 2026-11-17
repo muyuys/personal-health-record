@@ -1,6 +1,7 @@
 // 日常健康 · 体重与饮食 · 饮食段（复刻旧 dietDayFormHTML，js/app.views.body.js:814）。
 // 每日饮食记录：三餐、加餐、摄入估算、完整度、小结，含近 7 天执行摘要。
-import { useState } from 'react';
+// 增强：每餐支持拍照 → AI 估算热量范围与营养素，回填到该餐记录（照片暂存本地 /files/）。
+import { useRef, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { api } from '../../api/client';
 import type { DietDay } from '../../api/types';
@@ -10,21 +11,102 @@ const uid = () => 'dd' + Date.now().toString(36) + Math.random().toString(36).sl
 const numOrNull = (s: string) => (s === '' ? null : Number.isFinite(parseFloat(s)) ? parseFloat(s) : null);
 const COMPLETENESS = ['全部记录', '大部分记录', '部分记录', '仅主食', '未填'];
 
+// 四餐：key 对应 DietDay 上的文本字段（早/午/晚/加餐）
+const MEALS: { key: 'breakfast' | 'lunch' | 'dinner' | 'snack'; label: string }[] = [
+  { key: 'breakfast', label: '早餐' },
+  { key: 'lunch', label: '午餐' },
+  { key: 'dinner', label: '晚餐' },
+  { key: 'snack', label: '加餐 / 零食' },
+];
+
+type MealNutrition = { protein?: number | null; fat?: number | null; carb?: number | null; fiber?: number | null };
+type MealEstimate = {
+  dish: string;
+  kcal: { low: number | null; center: number | null; high: number | null };
+  nutrition: MealNutrition;
+  items: { name: string; portion: string; kcal: number | null }[];
+  confidence: string;
+  note: string;
+};
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+const parseNutrition = (s?: string): MealNutrition => {
+  if (!s) return {};
+  try { return JSON.parse(s) as MealNutrition; } catch { return {}; }
+};
+
 export function DietSeg() {
   const { data, reload } = useStore();
   const [form, setForm] = useState<null | DietDay>(null);
   const [saving, setSaving] = useState(false);
+  // 每餐的照片估算状态：mealKey → {busy, err, est}
+  const [est, setEst] = useState<Record<string, { busy: boolean; err: string; est: MealEstimate | null }>>({});
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const blank: DietDay = {
+    id: '', date: today(), morningWeight: null, weightNote: '', waist: null, sleep: '', hunger: '', ankle: '',
+    breakfast: '', lunch: '', dinner: '', snack: '', kcalCenter: null, kcalLow: null, kcalHigh: null,
+    budget: '', completeness: '', summary: '', note: '', photo: '', meal: '', nutrition: '', createdAt: 0,
+  };
+
+  // 选图 → 本地预览 + 调 AI 估算 → 回填该餐文本与热量/营养素（保留照片 dataURL，保存时由后端落盘）
+  const onPickMeal = async (mealKey: string, file: File) => {
+    const dataUrl = await readFileAsDataUrl(file);
+    setForm((f) => (f ? { ...f, photo: dataUrl, meal: mealKey } : f));
+    setEst((e) => ({ ...e, [mealKey]: { busy: true, err: '', est: null } }));
+    try {
+      const r = await api.ai.meal(dataUrl);
+      const estimate: MealEstimate = {
+        dish: String(r?.dish ?? ''),
+        kcal: {
+          low: r?.kcal?.low ?? null,
+          center: r?.kcal?.center ?? null,
+          high: r?.kcal?.high ?? null,
+        },
+        nutrition: r?.nutrition ?? {},
+        items: Array.isArray(r?.items) ? r.items : [],
+        confidence: String(r?.confidence ?? ''),
+        note: String(r?.note ?? ''),
+      };
+      setEst((e) => ({ ...e, [mealKey]: { busy: false, err: '', est: estimate } }));
+      // 回填：仅当确实估出有效热量才写入（识别失败返回 0/空时保留原值，不把真实数据冲成 0）
+      const kcalC = estimate.kcal.center;
+      const valid = kcalC != null && kcalC > 0;
+      setForm((f) => {
+        if (!f) return f;
+        const next: DietDay = {
+          ...f,
+          [mealKey]: f[mealKey as keyof DietDay]
+            ? String(f[mealKey as keyof DietDay])
+            : estimate.dish,
+          photo: dataUrl,
+          meal: mealKey,
+        };
+        if (valid) {
+          next.kcalCenter = kcalC;
+          next.kcalLow = estimate.kcal.low ?? kcalC;
+          next.kcalHigh = estimate.kcal.high ?? kcalC;
+          next.nutrition = JSON.stringify(estimate.nutrition);
+        }
+        return next;
+      });
+    } catch (e: any) {
+      setEst((x) => ({ ...x, [mealKey]: { busy: false, err: e?.message || '估算失败', est: null } }));
+    }
+  };
+
   const days = (data?.dietDays ?? []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const days7 = days.filter((d) => Date.now() - Date.parse(d.date + 'T00:00:00') <= 7 * 864e5);
   const kcal7 = days7.map((d) => d.kcalCenter).filter((n): n is number => Number.isFinite(n as number));
   const kcalAvg = kcal7.length ? kcal7.reduce((s, x) => s + x, 0) / kcal7.length : null;
   const complete7 = days7.filter((d) => d.completeness && d.completeness !== '未填').length;
-
-  const blank: DietDay = {
-    id: '', date: today(), morningWeight: null, weightNote: '', waist: null, sleep: '', hunger: '', ankle: '',
-    breakfast: '', lunch: '', dinner: '', snack: '', kcalCenter: null, kcalLow: null, kcalHigh: null,
-    budget: '', completeness: '', summary: '', note: '', createdAt: 0,
-  };
 
   const save = async () => {
     if (!form) return;
@@ -85,10 +167,41 @@ export function DietSeg() {
             {field('睡眠 小时', 'sleep')}
             <label className="field wide"><span>饥饿 / 精神状态</span><input value={form.hunger} onChange={(e) => setForm((f) => (f ? { ...f, hunger: e.target.value } : f))} /></label>
             <label className="field wide"><span>右踝反应</span><input value={form.ankle} onChange={(e) => setForm((f) => (f ? { ...f, ankle: e.target.value } : f))} /></label>
-            <label className="field wide"><span>早餐</span><input value={form.breakfast} onChange={(e) => setForm((f) => (f ? { ...f, breakfast: e.target.value } : f))} placeholder="未吃写「未吃」，没记写「未记录」" /></label>
-            <label className="field wide"><span>午餐</span><input value={form.lunch} onChange={(e) => setForm((f) => (f ? { ...f, lunch: e.target.value } : f))} /></label>
-            <label className="field wide"><span>晚餐</span><input value={form.dinner} onChange={(e) => setForm((f) => (f ? { ...f, dinner: e.target.value } : f))} /></label>
-            <label className="field wide"><span>饮料 / 零食 / 加餐</span><input value={form.snack} onChange={(e) => setForm((f) => (f ? { ...f, snack: e.target.value } : f))} /></label>
+            {MEALS.map(({ key, label }) => {
+              const st = est[key];
+              const showPhoto = form.photo && form.meal === key ? form.photo : null;
+              return (
+                <div className="field wide" key={key} style={{ gridColumn: '1 / -1' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {label}
+                    <label className="btn-plain" style={{ fontSize: 12, cursor: 'pointer', color: 'var(--pine-2)' }}>
+                      📷 拍照估算
+                      <input
+                        ref={(el) => { fileRefs.current[key] = el; }}
+                        type="file" accept="image/*" hidden
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void onPickMeal(key, f); e.target.value = ''; }}
+                      />
+                    </label>
+                    {st?.busy && <span className="hint" style={{ margin: 0 }}>AI 估算中…</span>}
+                  </span>
+                  <input value={String(form[key as 'breakfast' | 'lunch' | 'dinner' | 'snack'] ?? '')} onChange={(e) => setForm((f) => (f ? { ...f, [key]: e.target.value } : f))} placeholder="未吃写「未吃」，没记写「未记录」" />
+                  {st?.err && <span className="hint" style={{ margin: 0, color: 'var(--st-danger)' }}>{st.err}</span>}
+                  {showPhoto && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 6 }}>
+                      <img src={showPhoto} alt="餐食照片" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)' }} />
+                      {st?.est && (
+                        <div className="hint" style={{ margin: 0, lineHeight: 1.6 }}>
+                          <b style={{ color: 'var(--ink)' }}>{st.est.dish || label}</b>
+                          {st.est.kcal.center != null && <> · 约 <b>{st.est.kcal.low ?? '?'}–{st.est.kcal.high ?? '?'}</b> kcal（中心 {st.est.kcal.center}）</>}
+                          <br />蛋白质 {st.est.nutrition.protein ?? '—'}g · 脂肪 {st.est.nutrition.fat ?? '—'}g · 碳水 {st.est.nutrition.carb ?? '—'}g · 膳食纤维 {st.est.nutrition.fiber ?? '—'}g
+                          {st.est.confidence && <><br />把握度：{st.est.confidence}{st.est.note ? ` · ${st.est.note}` : ''}</>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {field('摄入中心值 kcal', 'kcalCenter', 'number', { step: '1' })}
             {field('摄入下限 kcal', 'kcalLow', 'number', { step: '1' })}
             {field('摄入上限 kcal', 'kcalHigh', 'number', { step: '1' })}
@@ -121,20 +234,31 @@ export function DietSeg() {
             {days.length === 0 ? <p className="hint">还没有每日记录——先记今天的三餐、晨重与摄入估算。</p> : (
               <div className="table-wrap">
                 <table className="data">
-                  <thead><tr><th>日期</th><th>晨重</th><th>摄入中心</th><th>完整度</th><th /></tr></thead>
+                  <thead><tr><th>日期</th><th>照片</th><th>晨重</th><th>摄入中心</th><th>营养素</th><th>完整度</th><th /></tr></thead>
                   <tbody>
-                    {days.slice(0, 60).map((d) => (
-                      <tr key={d.id}>
-                        <td className="date">{d.date}</td>
-                        <td className="num">{d.morningWeight != null ? `${d.morningWeight} kg` : '—'}</td>
-                        <td className="num">{d.kcalCenter != null ? `${d.kcalCenter} kcal` : '—'}</td>
-                        <td>{d.completeness || '未填'}</td>
-                        <td className="act">
-                          <button type="button" onClick={() => setForm({ ...d })}>编辑</button>
-                          <button className="danger" type="button" onClick={() => void del(d.id)}>删除</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {days.slice(0, 60).map((d) => {
+                      const nu = parseNutrition(d.nutrition);
+                      const hasNu = nu.protein != null || nu.fat != null || nu.carb != null || nu.fiber != null;
+                      return (
+                        <tr key={d.id}>
+                          <td className="date">{d.date}</td>
+                          <td>{d.photo ? <img src={d.photo} alt="餐食" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--line)' }} /> : '—'}</td>
+                          <td className="num">{d.morningWeight != null ? `${d.morningWeight} kg` : '—'}</td>
+                          <td className="num">
+                            {d.kcalLow != null || d.kcalHigh != null
+                              ? `${d.kcalLow ?? '?'}–${d.kcalHigh ?? '?'}`
+                              : d.kcalCenter != null ? `${d.kcalCenter} kcal` : '—'}
+                            {(d.kcalLow != null || d.kcalHigh != null) && d.kcalCenter != null && <small style={{ color: 'var(--ink-4)' }}> 中心 {d.kcalCenter}</small>}
+                          </td>
+                          <td>{hasNu ? <span style={{ fontSize: 12 }}>P{nu.protein ?? '—'} F{nu.fat ?? '—'} C{nu.carb ?? '—'}</span> : '—'}</td>
+                          <td>{d.completeness || '未填'}</td>
+                          <td className="act">
+                            <button type="button" onClick={() => setForm({ ...d })}>编辑</button>
+                            <button className="danger" type="button" onClick={() => void del(d.id)}>删除</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

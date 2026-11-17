@@ -176,6 +176,9 @@ export interface DietDay {
   completeness: string;
   summary: string;
   note: string;
+  photo?: string;       // 照片地址：本地 /files/xx.jpg，将来可换外部 URL
+  meal?: string;        // 餐次：早餐/午餐/晚餐/加餐
+  nutrition?: string;   // JSON 字符串：{protein,fat,carb,fiber} 克数（AI 估算）
   createdAt: number;
 }
 
